@@ -88,29 +88,46 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 	return buf, nil
 }
 
+type SourceConfig struct {
+	decompress DecompressFunc
+}
+
+type SourceConfigOption = func(config *SourceConfig)
+
+func WithCustomDecompressFunc(decompressFn DecompressFunc) SourceConfigOption {
+	return func(config *SourceConfig) {
+		config.decompress = decompressFn
+	}
+}
+
 type Source struct {
 	reader     RangeReader
 	header     HeaderV3
 	meta       Metadata
-	decompress DecompressFunc
+	config     *SourceConfig
 	repository *Repository
 }
 
-// TODO: options pattern
-func NewSource(reader RangeReader) (*Source, error) {
+func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, error) {
 	s := &Source{
 		reader: reader,
 		header: HeaderV3{},
 		meta:   Metadata{},
 	}
 
-	s.decompress = Decompress
+	config := &SourceConfig{
+		decompress: Decompress,
+	}
+
+	for _, o := range options {
+		o(config)
+	}
 
 	if err := s.header.ReadFrom(s.reader); err != nil {
 		return nil, err
 	}
 
-	if err := s.meta.ReadFrom(s.header, s.reader, s.decompress); err != nil {
+	if err := s.meta.ReadFrom(s.header, s.reader, s.config.decompress); err != nil {
 		return nil, err
 	}
 
@@ -125,7 +142,7 @@ func NewSource(reader RangeReader) (*Source, error) {
 }
 
 func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
-	return s.repository.Tile(ctx, s.header, s.reader, s.decompress, z, x, y)
+	return s.repository.Tile(ctx, s.header, s.reader, s.config.decompress, z, x, y)
 }
 
 func (s *Source) Header() HeaderV3 {
