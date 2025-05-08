@@ -19,10 +19,10 @@ const (
 )
 
 type Entry struct {
-	TileID    uint64
-	Offset    uint64
-	Size      uint64
-	RunLength uint32
+	TileID    uint64 `json:"tile_id"`
+	Offset    uint64 `json:"offset"`
+	Size      uint64 `json:"size"`
+	RunLength uint32 `json:"run_length"`
 }
 
 func (e Entry) String() string {
@@ -34,52 +34,59 @@ func (e Entry) String() string {
 }
 
 func NewDirectory(
+	ctx context.Context,
 	header HeaderV3,
 	reader RangeReader,
 	ranger Ranger,
 	decompress DecompressFunc,
-) (Directory, error) {
+) (*Directory, error) {
 	data, err := reader.ReadRange(
-		context.Background(),
+		ctx,
 		ranger,
 	)
 	if err != nil {
-		return Directory{}, fmt.Errorf("reading directory from source: %w", err)
+		return &Directory{}, fmt.Errorf("reading directory from source: %w", err)
 	}
 
 	decompReader, err := decompress(bytes.NewReader(data), header.InternalCompression)
 	if err != nil {
-		return Directory{}, fmt.Errorf("decompressing directory: %w", err)
+		return &Directory{}, fmt.Errorf("decompressing directory: %w", err)
 	}
 	if closer, ok := decompReader.(io.Closer); ok {
-		defer closer.Close()
+		defer func() {
+			if cerr := closer.Close(); cerr != nil {
+				if err == nil {
+					err = fmt.Errorf("closing decompressed reader: %w", cerr)
+				}
+			}
+		}()
 	}
 
 	dir := &Directory{}
 	if err := dir.deserialize(decompReader); err != nil {
-		return Directory{}, fmt.Errorf("deserializing directory: %w", err)
+		return &Directory{}, fmt.Errorf("deserializing directory: %w", err)
 	}
 
 	dir.key = fmt.Sprintf("%s:%d:%d", header.Etag, ranger.Offset(), ranger.Size())
 
-	return *dir, nil
+	return dir, nil
 }
 
 type Directory struct {
 	key     string
-	size    int
+	size    uint64
 	entries []Entry
 }
 
-func (d Directory) Key() string {
+func (d *Directory) Key() string {
 	return d.key
 }
 
-func (d Directory) Size() int {
+func (d *Directory) Size() uint64 {
 	return d.size
 }
 
-func (d Directory) IterEntries() iter.Seq[Entry] {
+func (d *Directory) IterEntries() iter.Seq[Entry] {
 	return func(yield func(Entry) bool) {
 		for _, v := range d.entries {
 			if !yield(v) {
@@ -89,7 +96,7 @@ func (d Directory) IterEntries() iter.Seq[Entry] {
 	}
 }
 
-func (d Directory) FindTile(tileId uint64) (Entry, error) {
+func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 	// Binary search for the first entry whose tileId > target.
 	i := sort.Search(len(d.entries), func(i int) bool {
 		return d.entries[i].TileID > tileId
@@ -97,7 +104,7 @@ func (d Directory) FindTile(tileId uint64) (Entry, error) {
 
 	// If i==0, every entries[j].tileId > tileId so no match.
 	if i == 0 {
-		return Entry{}, fmt.Errorf("tileId %d not found", tileId)
+		return &Entry{}, fmt.Errorf("tileId %d not found", tileId)
 	}
 
 	// Candidate is the one just before that.
@@ -105,9 +112,9 @@ func (d Directory) FindTile(tileId uint64) (Entry, error) {
 
 	// Check exact match or run‑length cover:
 	if tileId == e.TileID || tileId < e.TileID+uint64(e.RunLength) {
-		return e, nil
+		return &e, nil
 	}
-	return Entry{}, fmt.Errorf("tileId %d not found", tileId)
+	return &Entry{}, fmt.Errorf("tileId %d not found", tileId)
 }
 
 func (d *Directory) deserialize(r io.Reader) (err error) {
@@ -135,7 +142,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 		if err != nil {
 			return fmt.Errorf("reading runLength at %d: %w", i, err)
 		}
-		d.entries[i].RunLength = uint32(runLength)
+		d.entries[i].RunLength = uint32(runLength) //nolint:gosec
 	}
 
 	for i := range d.entries {
@@ -152,20 +159,20 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 			return fmt.Errorf("reading offset at %d: %w", i, err)
 		}
 		if offset == 0 && i > 0 {
-			d.entries[i].Offset = d.entries[i-1].Offset + uint64(d.entries[i-1].Size)
+			d.entries[i].Offset = d.entries[i-1].Offset + d.entries[i-1].Size
 		} else {
 			d.entries[i].Offset = offset - 1
 		}
 	}
 
-	d.size = int(countEntries)
+	d.size = countEntries
 
 	return
 }
 
 // NOTE: will have options eventually
 func NewRepository() (*Repository, error) {
-	cache, err := ristretto.NewCache(&ristretto.Config[string, Directory]{
+	cache, err := ristretto.NewCache(&ristretto.Config[string, *Directory]{
 		NumCounters: 10 * 500 * 1024, // number of keys to track frequency of (10M).
 		MaxCost:     500 * 1024,      // 500mb
 		BufferItems: 64,              // number of keys per Get buffer.
@@ -182,23 +189,24 @@ func NewRepository() (*Repository, error) {
 }
 
 type Repository struct {
-	cache *ristretto.Cache[string, Directory]
+	cache *ristretto.Cache[string, *Directory]
 }
 
 func (d *Repository) DirectoryAt(
+	ctx context.Context,
 	header HeaderV3,
 	reader RangeReader,
 	ranger Ranger,
 	decompress DecompressFunc,
-) (Directory, error) {
+) (*Directory, error) {
 	key := fmt.Sprintf(cacheKeyTemplate, header.Etag, ranger.Offset(), ranger.Size())
 	dir, ok := d.cache.Get(key)
 	if ok {
 		return dir, nil
 	}
-	dir, err := NewDirectory(header, reader, ranger, decompress)
+	dir, err := NewDirectory(ctx, header, reader, ranger, decompress)
 	if err != nil {
-		return Directory{}, err
+		return &Directory{}, err
 	}
 
 	// NOTE: even if it fails once, eventually it succeeds
@@ -230,7 +238,7 @@ func (d *Repository) Tile(
 	dO := header.RootOffset
 	dS := header.RootLength
 	for range 3 {
-		dir, err := d.DirectoryAt(header, reader, NewRange(dO, dS), decompress)
+		dir, err := d.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
 		if err != nil {
 			return []byte{}, err
 		}
@@ -238,11 +246,12 @@ func (d *Repository) Tile(
 		if err != nil {
 			return []byte{}, err
 		}
-		if entry != (Entry{}) {
+		// TODO: refactor
+		if entry != nil {
 			if entry.RunLength > 0 {
 				data, err := reader.ReadRange(
 					ctx,
-					NewRange(header.TileDataOffset+entry.Offset, uint64(entry.Size)),
+					NewRange(header.TileDataOffset+entry.Offset, entry.Size),
 				)
 				if err != nil {
 					return []byte{}, err
@@ -251,13 +260,17 @@ func (d *Repository) Tile(
 				if err != nil {
 					return []byte{}, fmt.Errorf("decompressing tile entry: %w", err)
 				}
-				if closer, ok := decompReader.(io.Closer); ok {
-					defer closer.Close()
-				}
 
 				tileData, err := io.ReadAll(decompReader)
 				if err != nil {
 					return []byte{}, fmt.Errorf("reading decompressed metadata: %w", err)
+				}
+
+				if closer, ok := decompReader.(io.Closer); ok {
+					cerr := closer.Close()
+					if cerr != nil {
+						return []byte{}, fmt.Errorf("closing decompression reader: %w", cerr)
+					}
 				}
 
 				return tileData, nil

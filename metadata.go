@@ -29,13 +29,17 @@ func (m *Metadata) ReadFrom(header HeaderV3, r RangeReader, decompress Decompres
 	if err != nil {
 		return fmt.Errorf("decompressing metadata: %w", err)
 	}
-	if closer, ok := decompReader.(io.Closer); ok {
-		defer closer.Close()
-	}
 
 	jsonData, err := io.ReadAll(decompReader)
 	if err != nil {
 		return fmt.Errorf("reading decompressed metadata: %w", err)
+	}
+
+	if closer, ok := decompReader.(io.Closer); ok {
+		cerr := closer.Close()
+		if cerr != nil {
+			return fmt.Errorf("closing decompression reader: %w", cerr)
+		}
 	}
 
 	if err := json.Unmarshal(jsonData, m); err != nil {
@@ -45,7 +49,7 @@ func (m *Metadata) ReadFrom(header HeaderV3, r RangeReader, decompress Decompres
 	return nil
 }
 
-func (m Metadata) String() string {
+func (m *Metadata) String() string {
 	jsonBytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return `{"error": "failed to marshal Metadata"}`

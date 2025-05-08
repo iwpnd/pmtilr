@@ -1,0 +1,25 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+      - name: setup dependencies
+        run: |
+          go install github.com/mfridman/tparse@latest
+      - name: lint
+        uses: golangci/golangci-lint-action@v6.5.0
+        with:
+          version: latest
+      - name: test
+        run: make test

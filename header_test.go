@@ -10,7 +10,7 @@ import (
 func makeValidHeaderBytes(modifier func([]byte) []byte) []byte {
 	data := make([]byte, HeaderSizeBytes)
 
-	copy(data[0:7], []byte("PMTiles"))              // magic
+	copy(data[0:7], `PMTiles`)                      // magic
 	data[7] = 3                                     // version
 	binary.LittleEndian.PutUint64(data[8:16], 1000) // RootOffset
 	// other fields are 0d
@@ -39,7 +39,7 @@ func TestNewHeader(t *testing.T) {
 		{
 			name: "invalid magic",
 			modify: func(data []byte) []byte {
-				copy(data[0:7], []byte("Invalid"))
+				copy(data[0:7], `"Invalid"`)
 				return data
 			},
 			wantErr: true,
@@ -92,7 +92,7 @@ func TestHeaderString(t *testing.T) {
 	}
 
 	out := h.String()
-	if !strings.Contains(out, `"SpecVersion": 3`) {
+	if !strings.Contains(out, `"spec_version": 3`) {
 		t.Errorf("expected SpecVersion in JSON, got %s", out)
 	}
 	if !strings.Contains(out, `"gzip"`) {

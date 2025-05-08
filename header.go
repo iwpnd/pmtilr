@@ -16,12 +16,41 @@ const (
 	HeaderSizeBytes = 127
 )
 
+type HeaderV3 struct {
+	Etag                string      `json:"etag"`
+	SpecVersion         uint8       `json:"spec_version"`
+	RootOffset          uint64      `json:"root_offset"`
+	RootLength          uint64      `json:"root_length"`
+	MetadataOffset      uint64      `json:"metadata_offset"`
+	MetadataLength      uint64      `json:"metadata_length"`
+	LeafDirectoryOffset uint64      `json:"leaf_directory_offset"`
+	LeafDirectoryLength uint64      `json:"leaf_directory_length"`
+	TileDataOffset      uint64      `json:"tile_data_offset"`
+	TileDataLength      uint64      `json:"tile_data_length"`
+	AddressedTilesCount uint64      `json:"addressed_tiles_count"`
+	TileEntriesCount    uint64      `json:"tile_entries_count"`
+	TileContentsCount   uint64      `json:"tile_contents_count"`
+	Clustered           bool        `json:"clustered"`
+	InternalCompression Compression `json:"internal_compression"`
+	TileCompression     Compression `json:"tile_compression"`
+	TileType            TileType    `json:"tile_type"`
+	MinZoom             uint8       `json:"min_zoom"`
+	MaxZoom             uint8       `json:"max_zoom"`
+	MinLonE7            int32       `json:"min_lon_e7"`
+	MinLatE7            int32       `json:"min_lat_e7"`
+	MaxLonE7            int32       `json:"max_lon_e7"`
+	MaxLatE7            int32       `json:"max_lat_e7"`
+	CenterZoom          uint8       `json:"center_zoom"`
+	CenterLonE7         int32       `json:"center_lon_e7"`
+	CenterLatE7         int32       `json:"center_lat_e7"`
+}
+
 func NewHeader(r io.Reader) (*HeaderV3, error) {
 	h := &HeaderV3{}
 	d := make([]byte, HeaderSizeBytes)
 	_, err := io.ReadFull(r, d)
 	if err != nil {
-		return h, fmt.Errorf("reading header: %v", err)
+		return h, fmt.Errorf("reading header: %w", err)
 	}
 	if err := h.deserialize(d); err != nil {
 		return h, err
@@ -50,7 +79,7 @@ func (h *HeaderV3) ReadFrom(r RangeReader) (err error) {
 	return
 }
 
-func (h HeaderV3) String() string {
+func (h *HeaderV3) String() string {
 	jsonBytes, err := json.MarshalIndent(h, "", "  ")
 	if err != nil {
 		return `{"error": "failed to marshal HeaderV3"}`
@@ -67,7 +96,7 @@ func (h *HeaderV3) deserialize(d []byte) error {
 	// 2) version
 	ver, err := h.version(d[7])
 	if err != nil {
-		return fmt.Errorf("unsupported spec version: %v", err)
+		return fmt.Errorf("unsupported spec version: %w", err)
 	}
 	h.SpecVersion = ver
 
@@ -93,15 +122,15 @@ func (h *HeaderV3) deserialize(d []byte) error {
 	// 5) zoom & bounds
 	h.MinZoom = d[100]
 	h.MaxZoom = d[101]
-	h.MinLonE7 = int32(binary.LittleEndian.Uint32(d[102:106]))
-	h.MinLatE7 = int32(binary.LittleEndian.Uint32(d[106:110]))
-	h.MaxLonE7 = int32(binary.LittleEndian.Uint32(d[110:114]))
-	h.MaxLatE7 = int32(binary.LittleEndian.Uint32(d[114:118]))
+	h.MinLonE7 = int32(binary.LittleEndian.Uint32(d[102:106])) //nolint:gosec
+	h.MinLatE7 = int32(binary.LittleEndian.Uint32(d[106:110])) //nolint:gosec
+	h.MaxLonE7 = int32(binary.LittleEndian.Uint32(d[110:114])) //nolint:gosec
+	h.MaxLatE7 = int32(binary.LittleEndian.Uint32(d[114:118])) //nolint:gosec
 
 	// 6) center point
 	h.CenterZoom = d[118]
-	h.CenterLonE7 = int32(binary.LittleEndian.Uint32(d[119:123]))
-	h.CenterLatE7 = int32(binary.LittleEndian.Uint32(d[123:127]))
+	h.CenterLonE7 = int32(binary.LittleEndian.Uint32(d[119:123])) //nolint:gosec
+	h.CenterLatE7 = int32(binary.LittleEndian.Uint32(d[123:127])) //nolint:gosec
 
 	return nil
 }
@@ -115,33 +144,4 @@ func (h *HeaderV3) version(d byte) (uint8, error) {
 	default:
 		return 0, fmt.Errorf("unknown version")
 	}
-}
-
-type HeaderV3 struct {
-	Etag                string
-	SpecVersion         uint8
-	RootOffset          uint64
-	RootLength          uint64
-	MetadataOffset      uint64
-	MetadataLength      uint64
-	LeafDirectoryOffset uint64
-	LeafDirectoryLength uint64
-	TileDataOffset      uint64
-	TileDataLength      uint64
-	AddressedTilesCount uint64
-	TileEntriesCount    uint64
-	TileContentsCount   uint64
-	Clustered           bool
-	InternalCompression Compression
-	TileCompression     Compression
-	TileType            TileType
-	MinZoom             uint8
-	MaxZoom             uint8
-	MinLonE7            int32
-	MinLatE7            int32
-	MaxLonE7            int32
-	MaxLatE7            int32
-	CenterZoom          uint8
-	CenterLonE7         int32
-	CenterLatE7         int32
 }

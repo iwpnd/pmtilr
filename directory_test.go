@@ -103,6 +103,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 		},
 	}
 
+	ctx := context.Background()
 	repo, err := NewRepository()
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
@@ -112,7 +113,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			key := fmt.Sprintf("%s:%d:%d", tc.header.Etag, tc.ranger.Offset(), tc.ranger.Size())
 
-			dir, err := repo.DirectoryAt(tc.header, tc.reader, tc.ranger, tc.decompress)
+			dir, err := repo.DirectoryAt(ctx, tc.header, tc.reader, tc.ranger, tc.decompress)
 
 			if tc.expectError && err == nil {
 				t.Errorf("expected error but got nil")
@@ -128,7 +129,6 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 
 			if !tc.expectError && !tc.expectFromCache {
 				cached, ok := repo.cache.Get(key)
-				fmt.Println("from cache: ", ok)
 				if !ok || cached.Key() != dir.Key() {
 					t.Errorf("expected directory to be cached under key %s", key)
 				}

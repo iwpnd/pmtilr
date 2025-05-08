@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 type Sizer interface {
@@ -59,7 +60,8 @@ type RangeReader interface {
 
 // TODO: accept uri
 func NewFileRangeReader(path string) (*FileRangeReader, error) {
-	f, err := os.Open(path)
+	filePath := filepath.Clean(path)
+	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening file at path %s: %w", path, err)
 	}
@@ -80,8 +82,8 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 	size := ranger.Size()
 	buf := make([]byte, size)
 
-	_, err := f.file.ReadAt(buf, int64(offset))
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+	_, err := f.file.ReadAt(buf, int64(offset)) //nolint:gosec
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil, err
 	}
 
