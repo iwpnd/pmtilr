@@ -103,7 +103,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	repo, err := NewRepository()
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
@@ -178,7 +178,7 @@ func BenchmarkDeserializeOriginal(b *testing.B) {
 	data := generateFakeDirectoryData(10_000)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		d := &Directory{}
 		_ = d.deserialize(bytes.NewReader(data))
 	}

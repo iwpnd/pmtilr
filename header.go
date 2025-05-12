@@ -79,7 +79,7 @@ func (h *HeaderV3) ReadFrom(r RangeReader) (err error) {
 	return
 }
 
-func (h *HeaderV3) String() string {
+func (h HeaderV3) String() string {
 	jsonBytes, err := json.MarshalIndent(h, "", "  ")
 	if err != nil {
 		return `{"error": "failed to marshal HeaderV3"}`

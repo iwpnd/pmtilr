@@ -2,96 +2,15 @@ package pmtilr
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
+	"sync"
+
+	"github.com/brunomvsouza/singleflight"
 )
-
-type Sizer interface {
-	Size() uint64
-}
-
-type Offsetter interface {
-	Offset() uint64
-}
-
-type Ranger interface {
-	Offsetter
-	Sizer
-	Validate() error
-}
-
-const (
-	indexOffset = 0
-	indexSize   = 1
-)
-
-type Range [2]uint64
-
-func (r Range) Offset() uint64 {
-	return r[indexOffset]
-}
-
-func (r Range) Size() uint64 {
-	return r[indexSize]
-}
-
-func (r Range) Validate() error {
-	if r.Size() == 0 {
-		return errors.New("invalid range. size must be a positiv integer")
-	}
-	return nil
-}
-
-func NewRange(offset, size uint64) Range {
-	var r Range
-	r[indexOffset] = offset
-	r[indexSize] = size
-	return r
-}
-
-type RangeReader interface {
-	ReadRange(ctx context.Context, ranger Ranger) ([]byte, error)
-	// TODO:
-	// read multiple ranges ReadRanges(ctx, ranges []Ranger)
-}
-
-// TODO: accept uri
-func NewFileRangeReader(path string) (*FileRangeReader, error) {
-	filePath := filepath.Clean(path)
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("opening file at path %s: %w", path, err)
-	}
-
-	return &FileRangeReader{file: f}, nil
-}
-
-type FileRangeReader struct {
-	file io.ReaderAt
-}
-
-func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
-	if err := ranger.Validate(); err != nil {
-		return []byte{}, fmt.Errorf("invalid ranger: %w", err)
-	}
-
-	offset := ranger.Offset()
-	size := ranger.Size()
-	buf := make([]byte, size)
-
-	_, err := f.file.ReadAt(buf, int64(offset)) //nolint:gosec
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, err
-	}
-
-	return buf, nil
-}
 
 type SourceConfig struct {
-	decompress DecompressFunc
+	decompress            DecompressFunc
+	singleFlightZoomRange ZoomRange
 }
 
 type SourceConfigOption = func(config *SourceConfig)
@@ -102,34 +21,51 @@ func WithCustomDecompressFunc(decompressFn DecompressFunc) SourceConfigOption {
 	}
 }
 
+func WithSingleFlightZoomRange(zrange [2]uint64) SourceConfigOption {
+	return func(config *SourceConfig) {
+		config.singleFlightZoomRange = zrange
+	}
+}
+
 type Source struct {
 	reader     RangeReader
-	header     HeaderV3
-	meta       Metadata
+	header     *HeaderV3
+	meta       *Metadata
 	config     *SourceConfig
 	repository *Repository
+
+	sg *singleflight.Group[string, []byte]
+	mu sync.Mutex
 }
 
 func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, error) {
-	s := &Source{
-		reader: reader,
-		header: HeaderV3{},
-		meta:   Metadata{},
-	}
-
 	config := &SourceConfig{
-		decompress: Decompress,
+		decompress:            Decompress,
+		singleFlightZoomRange: NewZoomRange(singleFlightDefaultMinZoom, singleFlightDefaultMaxZoom),
 	}
 
 	for _, o := range options {
 		o(config)
 	}
 
-	if err := s.header.ReadFrom(s.reader); err != nil {
+	err := config.singleFlightZoomRange.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid single flight zoom range: %w", err)
+	}
+
+	s := &Source{
+		reader: reader,
+		header: &HeaderV3{},
+		meta:   &Metadata{},
+		config: config,
+		sg:     &singleflight.Group[string, []byte]{},
+	}
+
+	if err := s.updateHeader(); err != nil {
 		return nil, err
 	}
 
-	if err := s.meta.ReadFrom(s.header, s.reader, s.config.decompress); err != nil {
+	if err := s.updateMeta(); err != nil {
 		return nil, err
 	}
 
@@ -143,14 +79,46 @@ func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, erro
 	return s, nil
 }
 
+func (s *Source) useSingleFlight(z uint64) bool {
+	return z >= s.config.singleFlightZoomRange.MinZoom() &&
+		z <= s.config.singleFlightZoomRange.MaxZoom()
+}
+
+func (s *Source) updateHeader() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.header.ReadFrom(s.reader)
+}
+
+func (s *Source) updateMeta() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.meta.ReadFrom(*s.header, s.reader, s.config.decompress)
+}
+
 func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
-	return s.repository.Tile(ctx, s.header, s.reader, s.config.decompress, z, x, y)
+	// TODO: metrics for shared calls
+	if s.useSingleFlight(z) {
+		data, err, _ := s.sg.Do(
+			fmt.Sprintf(singleFlightKeyTemplate, z, x, y),
+			func() ([]byte, error) {
+				return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("reading tile with singleflight group: %w", err)
+		}
+		return data, err
+	}
+	return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
 }
 
 func (s *Source) Header() HeaderV3 {
-	return s.header
+	return *s.header
 }
 
 func (s *Source) Meta() Metadata {
-	return s.meta
+	return *s.meta
 }

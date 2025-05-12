@@ -49,7 +49,7 @@ func (m *Metadata) ReadFrom(header HeaderV3, r RangeReader, decompress Decompres
 	return nil
 }
 
-func (m *Metadata) String() string {
+func (m Metadata) String() string {
 	jsonBytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return `{"error": "failed to marshal Metadata"}`

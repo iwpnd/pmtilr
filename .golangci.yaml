@@ -64,6 +64,10 @@ linters:
     - ineffassign
     - unused
   settings:
+    recvcheck:
+      disable-builtin: true
+      exclusions:
+        - "*.String"
     cyclop:
       max-complexity: 15
     depguard:
@@ -151,7 +155,7 @@ linters:
           - gosec
         text: 'G404:'
     paths:
-      - cmd/tmp/$
+      - cmd/tmp/
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
