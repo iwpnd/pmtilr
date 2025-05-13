@@ -67,7 +67,7 @@ func NewDirectory(
 		return &Directory{}, fmt.Errorf("deserializing directory: %w", err)
 	}
 
-	dir.key = fmt.Sprintf("%s:%d:%d", header.Etag, ranger.Offset(), ranger.Size())
+	dir.key = fmt.Sprintf("%s:%d:%d", header.Etag, ranger.Offset(), ranger.Length())
 
 	return dir, nil
 }
@@ -199,7 +199,7 @@ func (d *Repository) DirectoryAt(
 	ranger Ranger,
 	decompress DecompressFunc,
 ) (*Directory, error) {
-	key := fmt.Sprintf(cacheKeyTemplate, header.Etag, ranger.Offset(), ranger.Size())
+	key := fmt.Sprintf(cacheKeyTemplate, header.Etag, ranger.Offset(), ranger.Length())
 	dir, ok := d.cache.Get(key)
 	if ok {
 		return dir, nil

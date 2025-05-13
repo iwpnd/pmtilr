@@ -20,7 +20,7 @@ func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) ([]byte, error)
 	if m.err != nil {
 		return nil, m.err
 	}
-	key := fmt.Sprintf("%d:%d", r.Offset(), r.Size())
+	key := fmt.Sprintf("%d:%d", r.Offset(), r.Length())
 	return m.data[key], nil
 }
 
@@ -30,7 +30,7 @@ type mockRanger struct {
 }
 
 func (m mockRanger) Offset() uint64  { return m.offset }
-func (m mockRanger) Size() uint64    { return m.size }
+func (m mockRanger) Length() uint64  { return m.size }
 func (m mockRanger) Validate() error { return nil }
 
 func fakeHeader(etag string) HeaderV3 {
@@ -111,7 +111,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			key := fmt.Sprintf("%s:%d:%d", tc.header.Etag, tc.ranger.Offset(), tc.ranger.Size())
+			key := fmt.Sprintf("%s:%d:%d", tc.header.Etag, tc.ranger.Offset(), tc.ranger.Length())
 
 			dir, err := repo.DirectoryAt(ctx, tc.header, tc.reader, tc.ranger, tc.decompress)
 
