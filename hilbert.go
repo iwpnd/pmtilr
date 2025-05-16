@@ -1,6 +1,7 @@
 package pmtilr
 
 import (
+	"errors"
 	"fmt"
 	"math/bits"
 )
@@ -25,7 +26,7 @@ func rotate(n, x, y, rx, ry uint64) [2]uint64 {
 	return [2]uint64{x, y}
 }
 
-func ZxyToHilbertTileID(z, x, y uint64) (uint64, error) {
+func ZXYToHilbertTileID(z, x, y uint64) (uint64, error) {
 	if z > MaxZ {
 		return 0, fmt.Errorf("zoom %d exceeds limit of %d", z, MaxZ)
 	}
@@ -54,26 +55,40 @@ func ZxyToHilbertTileID(z, x, y uint64) (uint64, error) {
 	return accumulator, nil
 }
 
-func ZxyFromHilbertTileID(i uint64) ([3]uint64, error) {
-	z := uint64(ZoomFromHilbertTileID(i)) //nolint:gosec
-	if z > MaxZ {
-		return [3]uint64{}, fmt.Errorf("tile zoom level %d exceeds maximum zoom level %d", z, MaxZ)
+func ZXYFromHilbertTileID(i uint64) ([3]uint64, error) {
+	// overflow check
+	if i >= invalidTileID {
+		return [3]uint64{}, errors.New("tile zoom exceeds 64-bit limit")
 	}
-	var accumulator, x, y, n uint64
-	accumulator = ((1<<z)*(1<<z) - 1) / 3
-	t := i - accumulator
-	x = 0
-	y = 0
-	n = 1 << z
 
-	for s := uint64(1); s < n; s <<= 1 {
-		rx := s & t / 2
-		ry := s & (t ^ rx)
-		rotatedXY := rotate(s, x, y, rx, ry)
-		x, y = rotatedXY[0], rotatedXY[1]
-		t /= 2
-		x += rx
-		y += ry
+	zCalc := ZoomFromHilbertTileID(i)
+	z := uint64(zCalc)
+	if z > MaxZ {
+		return [3]uint64{}, fmt.Errorf("tile zoom level %d exceeds maximum %d", z, MaxZ)
+	}
+
+	// compute prefix = (1<<(2*z) - 1) / 3
+	prefix := (uint64(1)<<(2*z) - 1) / 3
+	t := i - prefix
+
+	var x, y uint64
+	// decode bits level by level
+	for a := uint64(0); a < z; a++ {
+		s := uint64(1) << a
+		// extract bits: bit1->rx, bit0->ry (undo (3*rx)^ry encoding)
+		rx := (t >> 1) & 1
+		ry := (t & 1) ^ rx
+
+		// undo rotation using existing rotate
+		rot := rotate(s, x, y, rx, ry)
+		x, y = rot[0], rot[1]
+
+		// step into quadrant
+		x += rx * s
+		y += ry * s
+
+		// consume two bits
+		t >>= 2
 	}
 
 	return [3]uint64{z, x, y}, nil
