@@ -138,12 +138,17 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
 
-	offset := int64(ranger.Offset())
+	offset := int64(ranger.Offset()) //nolint:gosec
 	size := ranger.Length()
+
+	// TODO: use sync.Pool maybe?
+	// only issue is that buf size has high variance due to it
+	// a) reading directories (large) and entries (small).
+	// so sync.Pool needs to be big enough to avoid resizing, and small enough to not bloat
 	buf := make([]byte, size)
 
 	// ReadAt may return io.EOF or io.ErrUnexpectedEOF, which are safe to ignore
-	_, err := f.file.ReadAt(buf, offset) // nolint:gosec
+	_, err := f.file.ReadAt(buf, offset)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil, err
 	}

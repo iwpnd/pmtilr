@@ -18,13 +18,18 @@ const (
 	cacheKeyTemplate = "%s:%d:%d" // etag:offset:size
 )
 
+// Entry holds a reference to the exact location of a tile within
+// the PMTiles archive.
+// Each entry describes either where a specific tile can be found in the tile data
+// section or where a leaf directory can be found in the leaf directories section.
 type Entry struct {
 	TileID    uint64 `json:"tile_id"`
 	Offset    uint64 `json:"offset"`
-	Size      uint64 `json:"size"`
+	Length    uint64 `json:"length"`
 	RunLength uint32 `json:"run_length"`
 }
 
+// String returns a JSON string of the Entry.
 func (e Entry) String() string {
 	jsonBytes, err := json.MarshalIndent(e, "", "  ")
 	if err != nil {
@@ -33,6 +38,10 @@ func (e Entry) String() string {
 	return string(jsonBytes)
 }
 
+// NewDirectory creates a new Directory. A directory is a collection of
+// entries that can be resolved from the `header.RootDirectoryOffset` of the PMTiles
+// when the requested directory is a root directory. Otherwise the directory
+// is fetched from the `header.LeafDirectoryOffset`
 func NewDirectory(
 	ctx context.Context,
 	header HeaderV3,
@@ -72,20 +81,24 @@ func NewDirectory(
 	return dir, nil
 }
 
+// Directory is a collection of Tile Entries.
 type Directory struct {
 	key     string
 	size    uint64
 	entries []Entry
 }
 
+// Key returns the Directory key.
 func (d *Directory) Key() string {
 	return d.key
 }
 
+// Size returns the Directory size.
 func (d *Directory) Size() uint64 {
 	return d.size
 }
 
+// IterEntries is an iterator over the entries of a directory.
 func (d *Directory) IterEntries() iter.Seq[Entry] {
 	return func(yield func(Entry) bool) {
 		for _, v := range d.entries {
@@ -96,6 +109,7 @@ func (d *Directory) IterEntries() iter.Seq[Entry] {
 	}
 }
 
+// FindTile resolves an Entry by tileID.
 func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 	// Binary search for the first entry whose tileId > target.
 	i := sort.Search(len(d.entries), func(i int) bool {
@@ -117,6 +131,7 @@ func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 	return &Entry{}, fmt.Errorf("tileId %d not found", tileId)
 }
 
+// deserialize the directory from a decompression reader entry by entry.
 func (d *Directory) deserialize(r io.Reader) (err error) {
 	br := bufio.NewReader(r)
 	countEntries, err := binary.ReadUvarint(br)
@@ -150,7 +165,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 		if err != nil {
 			return fmt.Errorf("reading length at %d: %w", i, err)
 		}
-		d.entries[i].Size = size
+		d.entries[i].Length = size
 	}
 
 	for i := range d.entries {
@@ -159,7 +174,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 			return fmt.Errorf("reading offset at %d: %w", i, err)
 		}
 		if offset == 0 && i > 0 {
-			d.entries[i].Offset = d.entries[i-1].Offset + d.entries[i-1].Size
+			d.entries[i].Offset = d.entries[i-1].Offset + d.entries[i-1].Length
 		} else {
 			d.entries[i].Offset = offset - 1
 		}
@@ -230,7 +245,7 @@ func (d *Repository) Tile(
 			header.MaxZoom,
 		)
 	}
-	tileId, err := ZxyToHilbertTileID(z, x, y)
+	tileId, err := ZXYToHilbertTileID(z, x, y)
 	if err != nil {
 		return []byte{}, fmt.Errorf("resolving hilbert tile id from z: %d x: %d y: %d", z, x, y)
 	}
@@ -251,7 +266,7 @@ func (d *Repository) Tile(
 			if entry.RunLength > 0 {
 				data, err := reader.ReadRange(
 					ctx,
-					NewRange(header.TileDataOffset+entry.Offset, entry.Size),
+					NewRange(header.TileDataOffset+entry.Offset, entry.Length),
 				)
 				if err != nil {
 					return []byte{}, err
@@ -276,7 +291,7 @@ func (d *Repository) Tile(
 				return tileData, nil
 			}
 			dO = header.LeafDirectoryOffset + entry.Offset
-			dS = entry.Size
+			dS = entry.Length
 		} else {
 			return []byte{}, nil
 		}
