@@ -5,9 +5,9 @@ import (
 )
 
 var (
-	benchZ uint64 = 10
-	benchX uint64 = 205
-	benchY uint64 = 342
+	benchZ uint64 = 18
+	benchX uint64 = 51542
+	benchY uint64 = 92954
 )
 
 func BenchmarkZXYToHilbertTileID(b *testing.B) {

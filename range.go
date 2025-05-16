@@ -145,6 +145,8 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 	// only issue is that buf size has high variance due to it
 	// a) reading directories (large) and entries (small).
 	// so sync.Pool needs to be big enough to avoid resizing, and small enough to not bloat
+	// would also mean that the caller would be responsible to put back the buffer to the pool
+	// which is meh.
 	buf := make([]byte, size)
 
 	// ReadAt may return io.EOF or io.ErrUnexpectedEOF, which are safe to ignore

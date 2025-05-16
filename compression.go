@@ -1,7 +1,6 @@
 package pmtilr
 
 import (
-	"bufio"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -47,9 +46,6 @@ func Decompress(r io.Reader, compression Compression) (io.Reader, error) {
 		return r, nil
 
 	case CompressionGZIP:
-		if _, ok := r.(io.ByteReader); !ok {
-			r = bufio.NewReader(r)
-		}
 		gr, err := gzip.NewReader(r)
 		if err != nil {
 			return nil, fmt.Errorf("gzip.NewReader: %w", err)

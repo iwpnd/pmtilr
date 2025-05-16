@@ -61,6 +61,7 @@ func NewDirectory(
 	if err != nil {
 		return &Directory{}, fmt.Errorf("decompressing directory: %w", err)
 	}
+
 	if closer, ok := decompReader.(io.Closer); ok {
 		defer func() {
 			if cerr := closer.Close(); cerr != nil {
@@ -133,7 +134,13 @@ func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 
 // deserialize the directory from a decompression reader entry by entry.
 func (d *Directory) deserialize(r io.Reader) (err error) {
-	br := bufio.NewReader(r)
+	// only allocate when input reader doesn't implment ByteReader
+	var br io.ByteReader
+	if bb, ok := r.(io.ByteReader); ok {
+		br = bb
+	} else {
+		br = bufio.NewReader(r)
+	}
 	countEntries, err := binary.ReadUvarint(br)
 	if err != nil {
 		return fmt.Errorf("reading directory entries count: %w", err)
