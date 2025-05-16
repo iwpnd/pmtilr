@@ -3,7 +3,6 @@ package pmtilr
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/brunomvsouza/singleflight"
 )
@@ -52,7 +51,6 @@ type Source struct {
 
 	// sg serializes concurrent Tile() calls for the same header.etag/z/x/y
 	sg *singleflight.Group[string, []byte]
-	mu sync.Mutex // Protects header and meta during update
 }
 
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
@@ -81,10 +79,11 @@ func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, erro
 		sg:     &singleflight.Group[string, []byte]{},
 	}
 
-	if err := s.loadHeader(); err != nil {
+	if err := s.header.ReadFrom(s.reader); err != nil {
 		return nil, err
 	}
-	if err := s.loadMeta(); err != nil {
+
+	if err := s.meta.ReadFrom(*s.header, s.reader, s.config.decompress); err != nil {
 		return nil, err
 	}
 
@@ -96,22 +95,6 @@ func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, erro
 	s.repository = repo
 
 	return s, nil
-}
-
-// loadHeader reads and parses the header from the underlying reader.
-// It acquires the mutex to prevent concurrent header/meta reads.
-func (s *Source) loadHeader() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.header.ReadFrom(s.reader)
-}
-
-// loadMeta reads and parses the metadata (indexes) based on the current header.
-// It acquires the mutex to prevent concurrent header/meta reads.
-func (s *Source) loadMeta() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.meta.ReadFrom(*s.header, s.reader, s.config.decompress)
 }
 
 // useSingleFlight reports whether singleflight deduplication is enabled

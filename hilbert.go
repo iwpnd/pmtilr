@@ -62,7 +62,7 @@ func ZXYFromHilbertTileID(i uint64) ([3]uint64, error) {
 	}
 
 	zCalc := ZoomFromHilbertTileID(i)
-	z := uint64(zCalc)
+	z := uint64(zCalc) //nolint:gosec
 	if z > MaxZ {
 		return [3]uint64{}, fmt.Errorf("tile zoom level %d exceeds maximum %d", z, MaxZ)
 	}
