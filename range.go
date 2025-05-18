@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 const (
@@ -94,24 +92,16 @@ type RangeReader interface {
 // NewRangeReader parses a URI and returns an appropriate RangeReader implementation.
 // Supports local file URIs ("file://") and bare paths. Other schemes are not supported.
 func NewRangeReader(uri string) (RangeReader, error) {
-	uri = strings.TrimSpace(uri)
-
-	u, err := url.ParseRequestURI(uri)
+	u, err := ParseURI(uri)
 	if err != nil {
 		return nil, fmt.Errorf("parsing URI %q: %w", uri, err)
 	}
 
-	// FIX: fix file:// parsing
-	switch u.Scheme {
+	switch u.Scheme() {
 	case "", "file":
-		// Local file path support
-		path := u.Path
-		if u.Scheme == "" {
-			path = uri
-		}
-		return NewFileRangeReader(filepath.Join(".", path))
+		return NewFileRangeReader(u.FullPath())
 	default:
-		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme)
+		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 	}
 }
 
