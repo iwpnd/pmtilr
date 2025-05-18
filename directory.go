@@ -252,7 +252,7 @@ func (d *Repository) Tile(
 			header.MaxZoom,
 		)
 	}
-	tileId, err := ZXYToHilbertTileID(z, x, y)
+	tileId, err := FastZXYToHilbertTileID(z, x, y)
 	if err != nil {
 		return []byte{}, fmt.Errorf("resolving hilbert tile id from z: %d x: %d y: %d", z, x, y)
 	}
