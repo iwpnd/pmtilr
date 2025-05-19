@@ -10,9 +10,27 @@ import (
 	"io"
 	"iter"
 	"sort"
+	"sync"
 
 	"github.com/dgraph-io/ristretto/v2"
 )
+
+var readerPool = sync.Pool{
+	New: func() any {
+		// allocate a *bytes.Reader with zero‐length backing slice
+		return new(bufio.Reader)
+	},
+}
+
+func acquireReader(newReader io.Reader) *bufio.Reader {
+	r := readerPool.Get().(*bufio.Reader)
+	r.Reset(newReader)
+	return r
+}
+
+func releaseReader(usedReader *bufio.Reader) {
+	readerPool.Put(usedReader)
+}
 
 const (
 	cacheKeyTemplate = "%s:%d:%d" // etag:offset:size
@@ -134,13 +152,9 @@ func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 
 // deserialize the directory from a decompression reader entry by entry.
 func (d *Directory) deserialize(r io.Reader) (err error) {
-	// only allocate when input reader doesn't implment ByteReader
-	var br io.ByteReader
-	if bb, ok := r.(io.ByteReader); ok {
-		br = bb
-	} else {
-		br = bufio.NewReader(r)
-	}
+	br := acquireReader(r)
+	defer releaseReader(br)
+
 	countEntries, err := binary.ReadUvarint(br)
 	if err != nil {
 		return fmt.Errorf("reading directory entries count: %w", err)

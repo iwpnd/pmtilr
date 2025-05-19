@@ -2,6 +2,7 @@ package pmtilr
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -59,6 +60,8 @@ func fakeDirectoryData() []byte {
 }
 
 func TestRepositoryDirectoryAt(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		reader          *mockRangeReader
@@ -137,8 +140,6 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 	}
 }
 
-// --benmarks
-
 func generateFakeDirectoryData(n int) []byte {
 	var buf bytes.Buffer
 
@@ -174,12 +175,37 @@ func generateFakeDirectoryData(n int) []byte {
 	return buf.Bytes()
 }
 
-func BenchmarkDeserializeOriginal(b *testing.B) {
-	data := generateFakeDirectoryData(10_000)
+func BenchmarkDeserializeIsGzipReader(b *testing.B) {
+	raw := generateFakeDirectoryData(10_000)
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	if _, err := gw.Write(raw); err != nil {
+		b.Fatalf("gzip write failed: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		b.Fatalf("gzip close failed: %v", err)
+	}
+	compressed := buf.Bytes()
+	r := bytes.NewReader(compressed)
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		b.Fatalf("gzip NewReader failed: %v", err)
+	}
 
 	b.ResetTimer()
 	for b.Loop() {
 		d := &Directory{}
-		_ = d.deserialize(bytes.NewReader(data))
+		_ = d.deserialize(gr)
+	}
+}
+
+func BenchmarkDeserializeIsByteReader(b *testing.B) {
+	data := generateFakeDirectoryData(10_000)
+	br := bytes.NewReader(data)
+
+	b.ResetTimer()
+	for b.Loop() {
+		d := &Directory{}
+		_ = d.deserialize(br)
 	}
 }

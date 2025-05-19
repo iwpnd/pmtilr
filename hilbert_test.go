@@ -5,6 +5,8 @@ import (
 )
 
 func TestFastMatchesOriginal(t *testing.T) {
+	t.Parallel()
+
 	inputs := [][3]uint64{
 		{3, 1, 3},
 		{5, 7, 12},

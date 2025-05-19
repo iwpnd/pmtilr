@@ -24,6 +24,8 @@ func makeValidHeaderBytes(modifier func([]byte) []byte) []byte {
 }
 
 func TestNewHeader(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		modify   func([]byte) []byte
@@ -80,6 +82,8 @@ func TestNewHeader(t *testing.T) {
 }
 
 func TestHeaderString(t *testing.T) {
+	t.Parallel()
+
 	h := HeaderV3{
 		SpecVersion:         3,
 		RootOffset:          1234,
