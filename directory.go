@@ -23,7 +23,7 @@ var readerPool = sync.Pool{
 }
 
 func acquireReader(newReader io.Reader) *bufio.Reader {
-	r := readerPool.Get().(*bufio.Reader)
+	r := readerPool.Get().(*bufio.Reader) //nolint:errcheck,forcetypeassert
 	r.Reset(newReader)
 	return r
 }
