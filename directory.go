@@ -15,6 +15,10 @@ import (
 	"github.com/dgraph-io/ristretto/v2"
 )
 
+const (
+	cacheKeyTemplate = "%s:%d:%d" // etag:offset:size
+)
+
 var readerPool = sync.Pool{
 	New: func() any {
 		// allocate a *bytes.Reader with zero‐length backing slice
@@ -31,10 +35,6 @@ func acquireReader(newReader io.Reader) *bufio.Reader {
 func releaseReader(usedReader *bufio.Reader) {
 	readerPool.Put(usedReader)
 }
-
-const (
-	cacheKeyTemplate = "%s:%d:%d" // etag:offset:size
-)
 
 // Entry holds a reference to the exact location of a tile within
 // the PMTiles archive.
