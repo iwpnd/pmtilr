@@ -7,6 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const (
@@ -100,9 +103,17 @@ func NewRangeReader(uri string) (RangeReader, error) {
 	switch u.Scheme() {
 	case "", "file":
 		return NewFileRangeReader(u.FullPath())
+	case "s3":
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 	}
+}
+
+// FileRangeReader implements RangeReader by reading from an io.ReaderAt (file).
+// It interprets Ranger.Offset() and Ranger.Size() to slice the file.
+type FileRangeReader struct {
+	file io.ReaderAt
 }
 
 // NewFileRangeReader opens the file at the given path and returns a FileRangeReader.
@@ -115,12 +126,6 @@ func NewFileRangeReader(path string) (*FileRangeReader, error) {
 	return &FileRangeReader{file: f}, nil
 }
 
-// FileRangeReader implements RangeReader by reading from an io.ReaderAt (file).
-// It interprets Ranger.Offset() and Ranger.Size() to slice the file.
-type FileRangeReader struct {
-	file io.ReaderAt
-}
-
 // ReadRange reads bytes from the underlying file at the specified range.
 // It validates the Ranger and handles io.EOF gracefully.
 func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
@@ -129,7 +134,7 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 	}
 
 	offset := int64(ranger.Offset()) //nolint:gosec
-	size := ranger.Length()
+	length := ranger.Length()
 
 	// TODO: use sync.Pool maybe?
 	// only issue is that buf size has high variance due to it
@@ -137,13 +142,90 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 	// so sync.Pool needs to be big enough to avoid resizing, and small enough to not bloat
 	// would also mean that the caller would be responsible to put back the buffer to the pool
 	// which is meh.
-	buf := make([]byte, size)
+	buf := make([]byte, length)
 
 	// ReadAt may return io.EOF or io.ErrUnexpectedEOF, which are safe to ignore
-	_, err := f.file.ReadAt(buf, offset)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+	// but we clamp them to the actual returned data.
+	n, err := f.file.ReadAt(buf, offset)
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return buf[:n], nil
+		}
+
 		return nil, err
 	}
 
 	return buf, nil
+}
+
+// S3Client is an interface providing methods used by the S3RangeReader.
+type S3Client interface {
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+// S3RangeReader implements RangeReader by reading from an S3 bucket
+type S3RangeReader struct {
+	client S3Client
+	bucket string
+	key    string
+}
+
+// NewS3RangeReader creates a S3RangeReader implementing RangeReader.
+func NewS3RangeReader(bucket, key string, client S3Client) (*S3RangeReader, error) {
+	return &S3RangeReader{
+		bucket: bucket,
+		key:    key,
+		client: client,
+	}, nil
+}
+
+// ReadRange reads bytes from the underlying S3 object at the specified range.
+// It validates the Ranger.
+func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
+	if err := ranger.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ranger: %w", err)
+	}
+
+	offset := int64(ranger.Offset()) //nolint:gosec
+	length := int64(ranger.Length())
+
+	// Define the byte range.
+	byteRange := fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+
+	// Get object range.
+	output, err := s.client.GetObject(ctx,
+		&s3.GetObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(s.key),
+			Range:  aws.String(byteRange),
+		},
+		disableResponseValidation,
+	)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer output.Body.Close()
+
+	// Read the data into the buffer.
+	buf := make([]byte, length)
+	n, err := io.ReadFull(output.Body, buf)
+	if err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			// Stream ended early, return partial content
+			return buf[:n], nil
+		}
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+// disableResponseValidation disables checksum validation on the response.  This
+// is necessary for S3 ReaderAt byte range requests as the responses to these do
+// not include checksums.  Not disabling checksums means that by default the AWS
+// SDK will log checksum failures.  We *could* disable this logging using
+// DisableLogOutputChecksumValidationSkipped but it seems cleaner to disable the
+// check full stop.
+func disableResponseValidation(o *s3.Options) {
+	o.ResponseChecksumValidation = aws.ResponseChecksumValidationUnset
 }
