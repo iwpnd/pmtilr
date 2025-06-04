@@ -3,6 +3,7 @@ package pmtilr_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,8 @@ func TestFileRangeReader(t *testing.T) {
 	testFileName := "testfile"
 	testData := []byte("This is some test data for the RangeReader implementation.")
 	setupFn := func(t *testing.T) string {
+		t.Helper()
+
 		d := t.TempDir()
 		file := filepath.Join(d, testFileName)
 		err := os.WriteFile(file, testData, 0o600)
@@ -27,13 +30,11 @@ func TestFileRangeReader(t *testing.T) {
 		return file
 	}
 
-	testFile := setupFn(t)
-	ctx := context.Background()
-
-	tests := []struct { //nolint:govet
+	tests := []struct {
 		name          string
 		offset        int64
 		length        int
+		setupFn       func(t *testing.T) string
 		expectedData  string
 		expectedError error
 	}{
@@ -41,6 +42,7 @@ func TestFileRangeReader(t *testing.T) {
 			name:          "Read middle range",
 			offset:        5,
 			length:        10,
+			setupFn:       setupFn,
 			expectedData:  "is some te",
 			expectedError: nil,
 		},
@@ -48,6 +50,7 @@ func TestFileRangeReader(t *testing.T) {
 			name:          "Read full range",
 			offset:        0,
 			length:        len(testData),
+			setupFn:       setupFn,
 			expectedData:  string(testData),
 			expectedError: nil,
 		},
@@ -55,6 +58,7 @@ func TestFileRangeReader(t *testing.T) {
 			name:          "Read beyond end",
 			offset:        int64(len(testData) - 5),
 			length:        50,
+			setupFn:       setupFn,
 			expectedData:  "tion.",
 			expectedError: nil,
 		},
@@ -62,15 +66,15 @@ func TestFileRangeReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			testFile := tt.setupFn(t)
 			reader, err := pmtilr.NewFileRangeReader(testFile)
 			if err != nil {
 				t.Fatal("unexpected error")
 			}
 
-			result, err := reader.ReadRange(ctx, pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
-			if tt.expectedError != err {
-				fmt.Println(err)
-				t.Fatalf("expected error, and received error do not match")
+			result, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
+			if !errors.Is(err, tt.expectedError) {
+				t.Fatal("expected error, and received error do not match")
 			}
 
 			if len(tt.expectedData) != len(result) {
@@ -85,13 +89,11 @@ func TestFileRangeReader(t *testing.T) {
 }
 
 func TestS3RangeReader(t *testing.T) {
-	ctx := context.Background()
-
 	bucketName := "test-bucket"
 	objectKey := "test-object"
 	testData := []byte("This is some test data for the RangeReader implementation.")
 
-	tests := []struct { //nolint:govet
+	tests := []struct {
 		name          string
 		offset        int64
 		length        int
@@ -169,8 +171,8 @@ func TestS3RangeReader(t *testing.T) {
 				t.Fatal("unexpected error")
 			}
 
-			result, err := reader.ReadRange(ctx, pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
-			if tt.expectedError != err {
+			result, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
+			if !errors.Is(err, tt.expectedError) {
 				t.Fatalf("expected error, and received error do not match")
 			}
 

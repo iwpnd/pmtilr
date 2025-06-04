@@ -104,7 +104,9 @@ func NewRangeReader(uri string) (RangeReader, error) {
 	case "", "file":
 		return NewFileRangeReader(u.FullPath())
 	case "s3":
-		return nil, nil
+		client := createS3Client()
+		bucket, key := u.Host(), u.Path()
+		return NewS3RangeReader(bucket, key, client)
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 	}
@@ -163,6 +165,11 @@ type S3Client interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
+func createS3Client() S3Client {
+	config := aws.NewConfig()
+	return s3.NewFromConfig(*config)
+}
+
 // S3RangeReader implements RangeReader by reading from an S3 bucket
 type S3RangeReader struct {
 	client S3Client
@@ -186,8 +193,8 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, e
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
 
-	offset := int64(ranger.Offset()) //nolint:gosec
-	length := int64(ranger.Length())
+	offset := ranger.Offset()
+	length := ranger.Length()
 
 	// Define the byte range.
 	byteRange := fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
@@ -204,7 +211,7 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, e
 	if err != nil {
 		return []byte{}, err
 	}
-	defer output.Body.Close()
+	defer output.Body.Close() //nolint:errcheck
 
 	// Read the data into the buffer.
 	buf := make([]byte, length)
