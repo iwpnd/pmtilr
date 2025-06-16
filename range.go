@@ -211,10 +211,7 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, e
 	offset := ranger.Offset()
 	length := ranger.Length()
 
-	// Define the byte range.
 	byteRange := fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
-
-	// Get object range.
 	output, err := s.client.GetObject(ctx,
 		&s3.GetObjectInput{
 			Bucket: aws.String(s.bucket),
@@ -228,7 +225,6 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, e
 	}
 	defer output.Body.Close() //nolint:errcheck
 
-	// Read the data into the buffer.
 	buf := make([]byte, length)
 	n, err := io.ReadFull(output.Body, buf)
 	if err != nil {

@@ -16,9 +16,14 @@ type Metadata struct {
 	Version     string `json:"version"`
 }
 
-func (m *Metadata) ReadFrom(header HeaderV3, r RangeReader, decompress DecompressFunc) error {
+func (m *Metadata) ReadFrom(
+	ctx context.Context,
+	header HeaderV3,
+	r RangeReader,
+	decompress DecompressFunc,
+) error {
 	data, err := r.ReadRange(
-		context.Background(),
+		ctx,
 		NewRange(header.MetadataOffset, header.MetadataLength),
 	)
 	if err != nil {

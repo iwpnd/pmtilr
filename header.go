@@ -58,9 +58,9 @@ func NewHeader(r io.Reader) (*HeaderV3, error) {
 	return h, nil
 }
 
-func (h *HeaderV3) ReadFrom(r RangeReader) (err error) {
+func (h *HeaderV3) ReadFrom(ctx context.Context, r RangeReader) (err error) {
 	b, err := r.ReadRange(
-		context.Background(),
+		ctx,
 		NewRange(HeaderOffset, HeaderSizeBytes),
 	)
 	if err != nil {

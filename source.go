@@ -84,11 +84,11 @@ func NewSource(ctx context.Context, uri string, options ...SourceConfigOption) (
 		sg:     &singleflight.Group[string, []byte]{},
 	}
 
-	if err := s.header.ReadFrom(s.reader); err != nil {
+	if err := s.header.ReadFrom(ctx, s.reader); err != nil {
 		return nil, err
 	}
 
-	if err := s.meta.ReadFrom(*s.header, s.reader, s.config.decompress); err != nil {
+	if err := s.meta.ReadFrom(ctx, *s.header, s.reader, s.config.decompress); err != nil {
 		return nil, err
 	}
 
