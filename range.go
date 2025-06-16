@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -94,7 +96,7 @@ type RangeReader interface {
 
 // NewRangeReader parses a URI and returns an appropriate RangeReader implementation.
 // Supports local file URIs ("file://") and bare paths. Other schemes are not supported.
-func NewRangeReader(uri string) (RangeReader, error) {
+func NewRangeReader(ctx context.Context, uri string) (RangeReader, error) {
 	u, err := ParseURI(uri)
 	if err != nil {
 		return nil, fmt.Errorf("parsing URI %q: %w", uri, err)
@@ -104,9 +106,12 @@ func NewRangeReader(uri string) (RangeReader, error) {
 	case "", "file":
 		return NewFileRangeReader(u.FullPath())
 	case "s3":
-		client := createS3Client()
+		client, err := createS3Client(ctx)
+		if err != nil {
+			return nil, err
+		}
 		bucket, key := u.Host(), u.Path()
-		return NewS3RangeReader(bucket, key, client)
+		return NewS3RangeReader(bucket, strings.TrimPrefix(key, "/"), client)
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 	}
@@ -162,12 +167,22 @@ func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte,
 
 // S3Client is an interface providing methods used by the S3RangeReader.
 type S3Client interface {
-	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	GetObject(
+		ctx context.Context,
+		params *s3.GetObjectInput,
+		optFns ...func(*s3.Options),
+	) (*s3.GetObjectOutput, error)
 }
 
-func createS3Client() S3Client {
-	config := aws.NewConfig()
-	return s3.NewFromConfig(*config)
+func createS3Client(ctx context.Context) (S3Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = true
+	}), nil
 }
 
 // S3RangeReader implements RangeReader by reading from an S3 bucket
