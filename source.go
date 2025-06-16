@@ -56,7 +56,7 @@ type Source struct {
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
 // and immediately loads the header and metadata.
 // It returns an error if initial header or metadata reading fails.
-func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, error) {
+func NewSource(uri string, options ...SourceConfigOption) (*Source, error) {
 	config := &SourceConfig{
 		decompress:            Decompress,
 		singleFlightZoomRange: NewZoomRange(singleFlightDefaultMinZoom, singleFlightDefaultMaxZoom),
@@ -68,6 +68,11 @@ func NewSource(reader RangeReader, options ...SourceConfigOption) (*Source, erro
 	// Validate zoom range
 	if err := config.singleFlightZoomRange.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid single flight zoom range: %w", err)
+	}
+
+	reader, err := NewRangeReader(uri)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create Source with defaults
