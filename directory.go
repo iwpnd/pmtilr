@@ -15,10 +15,6 @@ import (
 	"github.com/dgraph-io/ristretto/v2"
 )
 
-const (
-	cacheKeyTemplate = "%s:%d:%d" // etag:offset:size
-)
-
 var readerPool = sync.Pool{
 	New: func() any {
 		// allocate a *bytes.Reader with zero‐length backing slice
@@ -208,11 +204,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 
 // NOTE: will have options eventually
 func NewRepository() (*Repository, error) {
-	cache, err := ristretto.NewCache(&ristretto.Config[string, *Directory]{
-		NumCounters: 10 * 500 * 1024, // number of keys to track frequency of (10M).
-		MaxCost:     500 * 1024,      // 500mb
-		BufferItems: 64,              // number of keys per Get buffer.
-	})
+	cache, err := NewDefaultCache()
 	if err != nil {
 		return nil, err
 	}
