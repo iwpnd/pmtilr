@@ -30,7 +30,10 @@ import (
 func main() {
     ctx := context.Background()
 
-    src, err := pmtilr.NewSource(ctx, "s3://my_bucket/tiles.pmtiles")
+    src, err := pmtilr.NewSource(ctx, "s3://my_bucket/tiles.pmtiles",
+        // (optional) zoom ranges (min to max) that are deduplicated by singleflight
+        pmtilr.WithSingleFlightZoomRange([2]uint64{0,14}),
+    )
     if err != nil {
         log.Fatalf("init source: %v", err)
     }
@@ -44,24 +47,19 @@ func main() {
 }
 ```
 
-## Config Options
-
-```go
-// zoom ranges (min to max) that are deduplicated by singleflight
-pmtilr.WithSingleFlightZoomRange([2]uint64{0, 14})
-```
-
 ## Benchmark
 
 100 VUs · local MinIO backend · same tile archive
 
 ```
-PU:    Intel(R) Core(TM) i7-14700KF
+PU:     Intel(R) Core(TM) i7-14700KF
 Cores:  28
-RAM: 62.6 GiB
+RAM:    62.6 GiB
 OS:     EndeavourOS
 Kernel: 6.15.8-arch1-1
 ```
+
+
 
 | Metric                              |      **pmtilr** | **go‑pmtiles** | Relative Δ                      |
 | ----------------------------------- | --------------: | -------------: | :------------------------------ |
