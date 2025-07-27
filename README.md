@@ -57,21 +57,22 @@ Cores:  28
 RAM:    62.6 GiB
 OS:     EndeavourOS
 Kernel: 6.15.8-arch1-1
+
+| Metric                              |      pmtilr     |   go‑pmtiles   | Δ                               |
+| ----------------------------------- | --------------- | -------------- | ------------------------------- |
+| Throughput (RPS)                    |     6 826 req/s |    2 789 req/s | +145 % more requests/second     |
+| Average latency                     |         14.6 ms |        35.8 ms | ‑59 % lower                     |
+| P90 latency                         |         43.0 ms |       110.8 ms | ‑61 % lower                     |
+| P95 latency                         |         60.3 ms |       158.2 ms | ‑62 % lower                     |
+| Data received                       |          7.4 GB |         2.0 GB | +270 % (matches higher RPS)     |
+| 2xx responses                       |         383 221 |        156 795 | —                               |
+| 204 responses\*                     |          26 465 |         10 651 | —                               |
+| Avg CPU (% of one core)             |           177 % |          125 % | +42 % CPU used                  |
+| Peak RSS                            |           83 MB |          79 MB | +4 MB                           |
 ```
 
 
 
-| Metric                              |      **pmtilr** | **go‑pmtiles** | Relative Δ                      |
-| ----------------------------------- | --------------: | -------------: | :------------------------------ |
-| **Throughput (RPS)**                | **6 826 req/s** |    2 789 req/s | **+145 %** more requests/second |
-| **Average latency**                 |     **14.6 ms** |        35.8 ms | **‑59 %** lower                 |
-| P90 latency                         |     **43.0 ms** |       110.8 ms | **‑61 %** lower                 |
-| P95 latency                         |     **60.3 ms** |       158.2 ms | **‑62 %** lower                 |
-| Data received                       |          7.4 GB |         2.0 GB | +270 % (matches higher RPS)     |
-| 2xx responses                       |         383 221 |        156 795 | —                               |
-| 204 responses\*                     |          26 465 |         10 651 | —                               |
-| **Avg CPU** (% of one core)         |           177 % |          125 % | **+42 %** CPU used              |
-| **Peak RSS**                        |           83 MB |          79 MB | +4 MB                           |
 
 
 ## License
