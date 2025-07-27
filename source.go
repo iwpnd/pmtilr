@@ -137,3 +137,8 @@ func (s *Source) Header() HeaderV3 {
 func (s *Source) Meta() Metadata {
 	return *s.meta
 }
+
+// Close the source and its dependencies.
+func (s *Source) Close() {
+	s.repository.Close()
+}
