@@ -256,12 +256,13 @@ func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 		return d.entries[i].TileID > tileId
 	})
 
-	// If i==0, every entries[j].tileId > tileId so no match.
+	// every entries[j].tileId > tileId so no match.
 	if i == 0 {
 		return &Entry{}, fmt.Errorf("tileId %d not found", tileId)
 	}
 
-	// Candidate is the one just before that.
+	// all entries at or after i have TileIDs greater than tileId
+	// therefor candidate is the one just before that.
 	e := d.entries[i-1]
 
 	// Check exact match or run‑length cover:
