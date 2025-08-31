@@ -43,6 +43,38 @@ type Entry struct {
 	RunLength uint32 `json:"run_length"`
 }
 
+// Entries represents a slice of Entry values.
+// It provides methods to deserialize entry attributes in order.
+type Entries []Entry
+
+// readEntries reads a list of Entry records from the provided buffered reader.
+//
+// It expects the data to be Uvarint-encoded in the following order:
+// 1. Entry count
+// 2. TileID deltas (relative to previous ID)
+// 3. Run lengths
+// 4. Lengths (in bytes)
+// 5. Offsets (0 means propagate from previous offset + previous length)
+//
+// The deserialization logic respects the PMTiles binary layout and handles
+// offset propagation.
+//
+// Returns a fully populated Entries slice, or an error if decoding fails.
+func readEntries(br *bufio.Reader) (entries Entries, err error) {
+	countEntries, err := binary.ReadUvarint(br)
+	if err != nil {
+		return nil, fmt.Errorf("reading directory entries count: %w", err)
+	}
+
+	entries = make([]Entry, countEntries)
+	err = entries.deserialize(br)
+	if err != nil {
+		return entries, err
+	}
+
+	return
+}
+
 // String returns a JSON string of the Entry.
 func (e Entry) String() string {
 	jsonBytes, err := json.MarshalIndent(e, "", "  ")
@@ -50,6 +82,99 @@ func (e Entry) String() string {
 		return `{"error": "failed to marshal entry"}`
 	}
 	return string(jsonBytes)
+}
+
+// deserialize populates the Entries slice by reading tile ID deltas,
+// runlengths, lengths, and offsets from the given reader.
+func (e Entries) deserialize(br *bufio.Reader) (err error) {
+	if e == nil {
+		return fmt.Errorf("cannot deserialize a nil array")
+	}
+
+	deserializeInOrder := []func(*bufio.Reader) error{
+		e.addTileID,
+		e.addRunLength,
+		e.addLength,
+		e.addOffset,
+	}
+
+	for _, fn := range deserializeInOrder {
+		err = fn(br)
+		if err != nil {
+			return err
+		}
+	}
+
+	return
+}
+
+// addTileID reads and decodes tile ID deltas from the reader.
+// Each value is added to the previous tile ID to compute the full sequence.
+//
+// Example:
+//
+//	delta1 = 3 → TileID[0] = 3
+//	delta2 = 1 → TileID[1] = 4 (3 + 1)
+func (e Entries) addTileID(br *bufio.Reader) (err error) {
+	var lastId uint64
+	for i := range e {
+		delta, err := binary.ReadUvarint(br)
+		if err != nil {
+			return fmt.Errorf("reading tileId delta at %d: %w", i, err)
+		}
+		e[i].TileID = lastId + delta
+		lastId = e[i].TileID
+	}
+	return
+}
+
+// addRunLength reads and assigns run lengths for each entry.
+// Each run length is Uvarint-encoded and cast to uint32.
+func (e Entries) addRunLength(br *bufio.Reader) (err error) {
+	for i := range e {
+		runLength, err := binary.ReadUvarint(br)
+		if err != nil {
+			return fmt.Errorf("reading runLength at %d: %w", i, err)
+		}
+		e[i].RunLength = uint32(runLength) //nolint:gosec
+	}
+	return
+}
+
+// addLength reads and assigns the byte length for each tile entry.
+// Length values are Uvarint-encoded.
+func (e Entries) addLength(br *bufio.Reader) (err error) {
+	for i := range e {
+		length, err := binary.ReadUvarint(br)
+		if err != nil {
+			return fmt.Errorf("reading length at %d: %w", i, err)
+		}
+		e[i].Length = length
+	}
+	return
+}
+
+// addOffset reads and assigns byte offsets for each entry.
+//
+// Offsets are Uvarint-encoded. A value of 0 (except for the first entry)
+// triggers offset propagation: the current offset is set to the previous
+// entry’s offset plus its length.
+//
+// The PMTiles format stores offsets as (offset + 1), so actual offset = stored - 1.
+func (e Entries) addOffset(br *bufio.Reader) (err error) {
+	for i := range e {
+		offset, err := binary.ReadUvarint(br)
+		if err != nil {
+			return fmt.Errorf("reading offset at %d: %w", i, err)
+		}
+		if offset == 0 && i > 0 {
+			// previous offset + previous length
+			e[i].Offset = e[i-1].Offset + e[i-1].Length
+		} else {
+			e[i].Offset = offset - 1
+		}
+	}
+	return
 }
 
 // NewDirectory creates a new Directory. A directory is a collection of
@@ -100,7 +225,7 @@ func NewDirectory(
 type Directory struct {
 	key     string
 	size    uint64
-	entries []Entry
+	entries Entries
 }
 
 // Key returns the Directory key.
@@ -151,53 +276,12 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 	br := acquireReader(r)
 	defer releaseReader(br)
 
-	countEntries, err := binary.ReadUvarint(br)
+	entries, err := readEntries(br)
 	if err != nil {
-		return fmt.Errorf("reading directory entries count: %w", err)
+		return err
 	}
 
-	entries := make([]Entry, countEntries)
-	d.entries = entries
-
-	var lastId uint64
-	for i := range d.entries {
-		delta, err := binary.ReadUvarint(br)
-		if err != nil {
-			return fmt.Errorf("reading tileId delta at %d: %w", i, err)
-		}
-		d.entries[i].TileID = lastId + delta
-		lastId = d.entries[i].TileID
-	}
-
-	for i := range d.entries {
-		runLength, err := binary.ReadUvarint(br)
-		if err != nil {
-			return fmt.Errorf("reading runLength at %d: %w", i, err)
-		}
-		d.entries[i].RunLength = uint32(runLength) //nolint:gosec
-	}
-
-	for i := range d.entries {
-		size, err := binary.ReadUvarint(br)
-		if err != nil {
-			return fmt.Errorf("reading length at %d: %w", i, err)
-		}
-		d.entries[i].Length = size
-	}
-
-	for i := range d.entries {
-		offset, err := binary.ReadUvarint(br)
-		if err != nil {
-			return fmt.Errorf("reading offset at %d: %w", i, err)
-		}
-		if offset == 0 && i > 0 {
-			d.entries[i].Offset = d.entries[i-1].Offset + d.entries[i-1].Length
-		} else {
-			d.entries[i].Offset = offset - 1
-		}
-	}
-
-	d.size = countEntries
+	d.size = uint64(len(entries))
 
 	return
 }
@@ -309,7 +393,7 @@ func (d *Repository) Tile(
 			return []byte{}, nil
 		}
 	}
-	return []byte{}, fmt.Errorf("maximum directory depth exceeded, ")
+	return []byte{}, fmt.Errorf("maximum directory depth exceeded")
 }
 
 func (d *Repository) Flush() {

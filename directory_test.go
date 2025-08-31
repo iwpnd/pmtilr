@@ -1,6 +1,7 @@
 package pmtilr
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -9,54 +10,120 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"strings"
 	"testing"
 )
 
-type mockRangeReader struct {
-	data map[string][]byte
-	err  error
+func writeUvarint(buf *bytes.Buffer, val uint64) {
+	// enough space for largest possible encoding of uin64
+	var tmp [10]byte
+	n := binary.PutUvarint(tmp[:], val)
+	buf.Write(tmp[:n])
 }
 
-func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) ([]byte, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	key := fmt.Sprintf("%d:%d", r.Offset(), r.Length())
-	return m.data[key], nil
-}
+func TestEntriesDeserializeNilReceiver(t *testing.T) {
+	var e Entries
+	br := bufio.NewReader(bytes.NewReader(nil))
 
-type mockRanger struct {
-	offset uint64
-	size   uint64
-}
-
-func (m mockRanger) Offset() uint64  { return m.offset }
-func (m mockRanger) Length() uint64  { return m.size }
-func (m mockRanger) Validate() error { return nil }
-
-func fakeHeader(etag string) HeaderV3 {
-	return HeaderV3{
-		Etag:                etag,
-		InternalCompression: CompressionNone,
+	err := e.deserialize(br)
+	if err == nil || !strings.Contains(err.Error(), "cannot deserialize") {
+		t.Errorf("expected nil slice error, got: %v", err)
 	}
 }
 
-func noopDecompressor(r io.Reader, _ Compression) (io.Reader, error) {
-	return r, nil
-}
+func TestReadEntries(t *testing.T) {
+	t.Parallel()
 
-func errorDecompressor(r io.Reader, _ Compression) (io.Reader, error) {
-	return nil, errors.New("failed to decompress")
-}
+	tests := []struct {
+		name          string
+		dataFunc      func() []byte
+		expectErr     bool
+		expectEntries []Entry
+	}{
+		{
+			name: "valid multiple entries with offset propagation",
+			dataFunc: func() []byte {
+				// Two entries:
+				// Entry 0: TileID = 3, RunLength = 2, Length = 100, Offset = 500 (actual = 499)
+				// Entry 1: TileID delta = 1 (=> 4), RunLength = 1, Length = 50, Offset = 0 (should use offset = 499 + 100 = 599)
+				buf := &bytes.Buffer{}
+				writeUvarint(buf, 2) // count
 
-func fakeDirectoryData() []byte {
-	buf := &bytes.Buffer{}
-	_ = binary.Write(buf, binary.LittleEndian, uint64(1))   // 1 entry
-	_ = binary.Write(buf, binary.LittleEndian, uint64(1))   // delta
-	_ = binary.Write(buf, binary.LittleEndian, uint64(2))   // runLength
-	_ = binary.Write(buf, binary.LittleEndian, uint64(100)) // size
-	_ = binary.Write(buf, binary.LittleEndian, uint64(500)) // offset
-	return buf.Bytes()
+				// TileID deltas
+				writeUvarint(buf, 3) // delta1
+				writeUvarint(buf, 1) // delta2
+
+				// RunLengths
+				writeUvarint(buf, 2)
+				writeUvarint(buf, 1)
+
+				// Lengths
+				writeUvarint(buf, 100)
+				writeUvarint(buf, 50)
+
+				// Offsets (stored +1 in PMTiles, and 0 triggers propagation)
+				writeUvarint(buf, 500) // actual offset = 499
+				writeUvarint(buf, 0)   // triggers propagation
+
+				return buf.Bytes()
+			},
+			expectErr: false,
+			expectEntries: []Entry{
+				{TileID: 3, RunLength: 2, Length: 100, Offset: 499},
+				{TileID: 4, RunLength: 1, Length: 50, Offset: 599}, // offset from previous + length
+			},
+		},
+		{
+			name: "invalid truncated multi-entry",
+			dataFunc: func() []byte {
+				buf := &bytes.Buffer{}
+				writeUvarint(buf, 2)
+				writeUvarint(buf, 1)
+				// missing remaining fields
+				return buf.Bytes()
+			},
+			expectErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			key := "1337:31337"
+			mockReader := &mockRangeReader{
+				data: map[string][]byte{
+					key: tc.dataFunc(),
+				},
+			}
+
+			data, err := mockReader.ReadRange(context.Background(), mockRanger{1337, 31337})
+			if err != nil {
+				t.Fatalf("mockRangeReader failed: %v", err)
+			}
+
+			br := bufio.NewReader(bytes.NewReader(data))
+			entries, err := readEntries(br)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("expected error but got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if len(entries) != len(tc.expectEntries) {
+				t.Fatalf("expected %d entries, got %d", len(tc.expectEntries), len(entries))
+			}
+
+			for i, want := range tc.expectEntries {
+				if entries[i] != want {
+					t.Errorf("entry[%d] mismatch:\n  got:  %+v\n  want: %+v", i, entries[i], want)
+				}
+			}
+		})
+	}
 }
 
 func TestRepositoryDirectoryAt(t *testing.T) {
@@ -140,41 +207,6 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 	}
 }
 
-func generateFakeDirectoryData(n int) []byte {
-	var buf bytes.Buffer
-
-	_ = binary.Write(&buf, binary.LittleEndian, uint64(n))
-
-	writeUvarints := func(vals []uint64) {
-		for _, v := range vals {
-			_ = binary.Write(&buf, binary.LittleEndian, v)
-		}
-	}
-
-	deltas := make([]uint64, n)
-	runLens := make([]uint64, n)
-	sizes := make([]uint64, n)
-	offsets := make([]uint64, n)
-
-	var lastID uint64
-	var currentOffset uint64
-	for i := range n {
-		deltas[i] = uint64(rand.Intn(10) + 1)
-		runLens[i] = uint64(rand.Intn(5) + 1)
-		sizes[i] = uint64(rand.Intn(1024) + 1)
-		offsets[i] = currentOffset
-		currentOffset += sizes[i]
-		lastID += deltas[i]
-	}
-
-	writeUvarints(deltas)
-	writeUvarints(runLens)
-	writeUvarints(sizes)
-	writeUvarints(offsets)
-
-	return buf.Bytes()
-}
-
 func BenchmarkDeserializeIsGzipReader(b *testing.B) {
 	raw := generateFakeDirectoryData(10_000)
 	var buf bytes.Buffer
@@ -208,4 +240,86 @@ func BenchmarkDeserializeIsByteReader(b *testing.B) {
 		d := &Directory{}
 		_ = d.deserialize(br)
 	}
+}
+
+type mockRangeReader struct {
+	data map[string][]byte
+	err  error
+}
+
+func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) ([]byte, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	key := fmt.Sprintf("%d:%d", r.Offset(), r.Length())
+	return m.data[key], nil
+}
+
+type mockRanger struct {
+	offset uint64
+	size   uint64
+}
+
+func (m mockRanger) Offset() uint64  { return m.offset }
+func (m mockRanger) Length() uint64  { return m.size }
+func (m mockRanger) Validate() error { return nil }
+
+func fakeHeader(etag string) HeaderV3 {
+	return HeaderV3{
+		Etag:                etag,
+		InternalCompression: CompressionNone,
+	}
+}
+
+func noopDecompressor(r io.Reader, _ Compression) (io.Reader, error) {
+	return r, nil
+}
+
+func errorDecompressor(r io.Reader, _ Compression) (io.Reader, error) {
+	return nil, errors.New("failed to decompress")
+}
+
+func fakeDirectoryData() []byte {
+	buf := &bytes.Buffer{}
+	_ = binary.Write(buf, binary.LittleEndian, uint64(1))   // 1 entry
+	_ = binary.Write(buf, binary.LittleEndian, uint64(1))   // delta
+	_ = binary.Write(buf, binary.LittleEndian, uint64(2))   // runLength
+	_ = binary.Write(buf, binary.LittleEndian, uint64(100)) // size
+	_ = binary.Write(buf, binary.LittleEndian, uint64(500)) // offset
+	return buf.Bytes()
+}
+
+func generateFakeDirectoryData(n int) []byte {
+	var buf bytes.Buffer
+
+	_ = binary.Write(&buf, binary.LittleEndian, uint64(n))
+
+	writeUvarints := func(vals []uint64) {
+		for _, v := range vals {
+			_ = binary.Write(&buf, binary.LittleEndian, v)
+		}
+	}
+
+	deltas := make([]uint64, n)
+	runLens := make([]uint64, n)
+	sizes := make([]uint64, n)
+	offsets := make([]uint64, n)
+
+	var lastID uint64
+	var currentOffset uint64
+	for i := range n {
+		deltas[i] = uint64(rand.Intn(10) + 1)
+		runLens[i] = uint64(rand.Intn(5) + 1)
+		sizes[i] = uint64(rand.Intn(1024) + 1)
+		offsets[i] = currentOffset
+		currentOffset += sizes[i]
+		lastID += deltas[i]
+	}
+
+	writeUvarints(deltas)
+	writeUvarints(runLens)
+	writeUvarints(sizes)
+	writeUvarints(offsets)
+
+	return buf.Bytes()
 }
