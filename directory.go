@@ -15,6 +15,8 @@ import (
 	"github.com/dgraph-io/ristretto/v2"
 )
 
+const directoryMaxDepth = 3
+
 var readerPool = sync.Pool{
 	New: func() any {
 		// allocate a *bytes.Reader with zero‐length backing slice
@@ -250,7 +252,7 @@ func (d *Directory) IterEntries() iter.Seq[Entry] {
 }
 
 // FindTile resolves an Entry by tileID.
-func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
+func (d *Directory) FindTile(tileId uint64) *Entry {
 	// Binary search for the first entry whose tileId > target.
 	i := sort.Search(len(d.entries), func(i int) bool {
 		return d.entries[i].TileID > tileId
@@ -258,18 +260,25 @@ func (d *Directory) FindTile(tileId uint64) (*Entry, error) {
 
 	// every entries[j].tileId > tileId so no match.
 	if i == 0 {
-		return &Entry{}, fmt.Errorf("tileId %d not found", tileId)
+		return nil
 	}
 
 	// all entries at or after i have TileIDs greater than tileId
 	// therefor candidate is the one just before that.
-	e := d.entries[i-1]
+	e := &d.entries[i-1]
+
+	// entry is a directory and should be traversed further
+	if e.RunLength == 0 {
+		return e
+	}
 
 	// Check exact match or run‑length cover:
 	if tileId == e.TileID || tileId < e.TileID+uint64(e.RunLength) {
-		return &e, nil
+		return e
 	}
-	return &Entry{}, fmt.Errorf("tileId %d not found", tileId)
+
+	// not found
+	return nil
 }
 
 // deserialize the directory from a decompression reader entry by entry.
@@ -282,6 +291,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 		return err
 	}
 
+	d.entries = entries
 	d.size = uint64(len(entries))
 
 	return
@@ -350,17 +360,14 @@ func (d *Repository) Tile(
 
 	dO := header.RootOffset
 	dS := header.RootLength
-	for range 3 {
+	for range directoryMaxDepth {
 		dir, err := d.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
 		if err != nil {
 			return []byte{}, err
 		}
-		entry, err := dir.FindTile(tileId)
-		if err != nil {
-			return []byte{}, err
-		}
-		// TODO: refactor
+		entry := dir.FindTile(tileId)
 		if entry != nil {
+			// entry is not a directory and we can attempt to read the tile data
 			if entry.RunLength > 0 {
 				data, err := reader.ReadRange(
 					ctx,
@@ -388,6 +395,7 @@ func (d *Repository) Tile(
 
 				return tileData, nil
 			}
+			// entry is a directory and we want to traverse the directory tree further
 			dO = header.LeafDirectoryOffset + entry.Offset
 			dS = entry.Length
 		} else {
