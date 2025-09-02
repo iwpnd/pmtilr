@@ -9,11 +9,12 @@ import (
 )
 
 type Metadata struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Attribution string `json:"attribution"`
-	Type        string `json:"type"`
-	Version     string `json:"version"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Attribution  string `json:"attribution"`
+	Type         string `json:"type"`
+	Version      string `json:"version"`
+	VectorLayers []any  `json:"vector_layers"`
 }
 
 func (m *Metadata) ReadFrom(
