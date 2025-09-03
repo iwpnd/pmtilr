@@ -3,6 +3,8 @@ package pmtilr
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"sync"
 
 	"github.com/brunomvsouza/singleflight"
 )
@@ -12,6 +14,31 @@ const (
 	singleFlightDefaultMinZoom = 1
 	singleFlightDefaultMaxZoom = 10
 )
+
+// keyBufPool provides a shared buffer pool with 64-byte pre-allocated buffers
+var keyBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, 64) // Pre-allocate 64 bytes capacity, sufficient for key pattern
+		return &buf
+	},
+}
+
+// buildSingleflightKey efficiently builds a singleflight key using a shared buffer pool
+func buildSingleflightKey(etag string, z, x, y uint64) string {
+	bufPtr, _ := keyBufPool.Get().(*[]byte) //nolint:errcheck
+	buf := (*bufPtr)[:0]                    // Reset length but keep capacity
+	defer keyBufPool.Put(bufPtr)
+
+	buf = append(buf, etag...)
+	buf = append(buf, ':')
+	buf = strconv.AppendUint(buf, z, 10)
+	buf = append(buf, ':')
+	buf = strconv.AppendUint(buf, x, 10)
+	buf = append(buf, ':')
+	buf = strconv.AppendUint(buf, y, 10)
+
+	return string(buf)
+}
 
 // SourceConfig holds customization options for a Source.
 type SourceConfig struct {
@@ -115,7 +142,7 @@ func (s *Source) useSingleFlight(z uint64) bool {
 func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
 	if s.useSingleFlight(z) {
 		// Deduplicate concurrent loads of the same tile
-		key := fmt.Sprintf(singleFlightKeyTemplate, s.header.Etag, z, x, y)
+		key := buildSingleflightKey(s.header.Etag, z, x, y)
 		data, err, _ := s.sg.Do(key, func() ([]byte, error) {
 			return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
 		})
