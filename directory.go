@@ -197,7 +197,15 @@ func NewDirectory(
 	if err != nil {
 		return &Directory{}, fmt.Errorf("reading directory from source: %w", err)
 	}
-	defer rangeReader.Close()
+	defer func() {
+		if cerr := rangeReader.Close(); cerr != nil {
+			if err == nil {
+				err = cerr
+			} else {
+				err = errors.Join(err, cerr)
+			}
+		}
+	}()
 
 	decompReader, err := decompress(rangeReader, header.InternalCompression)
 	if err != nil {
@@ -377,14 +385,15 @@ func (d *Repository) Tile(
 				if err != nil {
 					return []byte{}, err
 				}
-				defer rangeReader.Close()
 
 				decompReader, err := decompress(rangeReader, header.TileCompression)
 				if err != nil {
+					rangeReader.Close() //nolint:errcheck
 					return []byte{}, fmt.Errorf("decompressing tile entry: %w", err)
 				}
 
 				tileData, err := io.ReadAll(decompReader)
+				rangeReader.Close() //nolint:errcheck
 				if err != nil {
 					return []byte{}, fmt.Errorf("reading decompressed metadata: %w", err)
 				}

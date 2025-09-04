@@ -30,7 +30,15 @@ func (m *Metadata) ReadFrom(
 	if err != nil {
 		return fmt.Errorf("reading metadata range: %w", err)
 	}
-	defer rangeReader.Close()
+	defer func() {
+		if cerr := rangeReader.Close(); cerr != nil {
+			if err == nil {
+				err = cerr
+			} else {
+				err = errors.Join(err, cerr)
+			}
+		}
+	}()
 
 	decompReader, err := decompress(rangeReader, header.InternalCompression)
 	if err != nil {
