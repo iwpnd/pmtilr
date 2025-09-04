@@ -95,12 +95,13 @@ func TestReadEntries(t *testing.T) {
 				},
 			}
 
-			data, err := mockReader.ReadRange(context.Background(), mockRanger{1337, 31337})
+			readCloser, err := mockReader.ReadRange(context.Background(), mockRanger{1337, 31337})
 			if err != nil {
 				t.Fatalf("mockRangeReader failed: %v", err)
 			}
+			defer readCloser.Close()
 
-			br := bufio.NewReader(bytes.NewReader(data))
+			br := bufio.NewReader(readCloser)
 			entries, err := readEntries(br)
 
 			if tc.expectErr {
@@ -247,12 +248,13 @@ type mockRangeReader struct {
 	err  error
 }
 
-func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) ([]byte, error) {
+func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) (io.ReadCloser, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	key := fmt.Sprintf("%d:%d", r.Offset(), r.Length())
-	return m.data[key], nil
+	data := m.data[key]
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 type mockRanger struct {
@@ -271,11 +273,11 @@ func fakeHeader(etag string) HeaderV3 {
 	}
 }
 
-func noopDecompressor(r io.Reader, _ Compression) (io.Reader, error) {
-	return r, nil
+func noopDecompressor(r io.Reader, _ Compression) (io.ReadCloser, error) {
+	return io.NopCloser(r), nil
 }
 
-func errorDecompressor(r io.Reader, _ Compression) (io.Reader, error) {
+func errorDecompressor(r io.Reader, _ Compression) (io.ReadCloser, error) {
 	return nil, errors.New("failed to decompress")
 }
 

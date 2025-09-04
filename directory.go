@@ -2,10 +2,10 @@ package pmtilr
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -190,28 +190,29 @@ func NewDirectory(
 	ranger Ranger,
 	decompress DecompressFunc,
 ) (*Directory, error) {
-	data, err := reader.ReadRange(
+	rangeReader, err := reader.ReadRange(
 		ctx,
 		ranger,
 	)
 	if err != nil {
 		return &Directory{}, fmt.Errorf("reading directory from source: %w", err)
 	}
+	defer rangeReader.Close()
 
-	decompReader, err := decompress(bytes.NewReader(data), header.InternalCompression)
+	decompReader, err := decompress(rangeReader, header.InternalCompression)
 	if err != nil {
 		return &Directory{}, fmt.Errorf("decompressing directory: %w", err)
 	}
 
-	if closer, ok := decompReader.(io.Closer); ok {
-		defer func() {
-			if cerr := closer.Close(); cerr != nil {
-				if err == nil {
-					err = fmt.Errorf("closing decompressed reader: %w", cerr)
-				}
+	defer func() {
+		if cerr := decompReader.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("closing decompressed reader: %w", cerr)
+			} else {
+				err = errors.Join(err, fmt.Errorf("closing decompressed reader: %w", cerr))
 			}
-		}()
-	}
+		}
+	}()
 
 	dir := &Directory{}
 	if err := dir.deserialize(decompReader); err != nil {
@@ -369,14 +370,16 @@ func (d *Repository) Tile(
 		if entry != nil {
 			// entry is not a directory and we can attempt to read the tile data
 			if entry.RunLength > 0 {
-				data, err := reader.ReadRange(
+				rangeReader, err := reader.ReadRange(
 					ctx,
 					NewRange(header.TileDataOffset+entry.Offset, entry.Length),
 				)
 				if err != nil {
 					return []byte{}, err
 				}
-				decompReader, err := decompress(bytes.NewReader(data), header.TileCompression)
+				defer rangeReader.Close()
+
+				decompReader, err := decompress(rangeReader, header.TileCompression)
 				if err != nil {
 					return []byte{}, fmt.Errorf("decompressing tile entry: %w", err)
 				}
@@ -386,11 +389,8 @@ func (d *Repository) Tile(
 					return []byte{}, fmt.Errorf("reading decompressed metadata: %w", err)
 				}
 
-				if closer, ok := decompReader.(io.Closer); ok {
-					cerr := closer.Close()
-					if cerr != nil {
-						return []byte{}, fmt.Errorf("closing decompression reader: %w", cerr)
-					}
+				if cerr := decompReader.Close(); cerr != nil {
+					return []byte{}, fmt.Errorf("closing decompression reader: %w", cerr)
 				}
 
 				return tileData, nil

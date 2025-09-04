@@ -89,9 +89,9 @@ func NewRange(offset, size uint64) Range {
 // RangeReader defines the interface for reading arbitrary byte ranges
 // given a Ranger description.
 type RangeReader interface {
-	// ReadRange reads the bytes defined by the Ranger and returns them,
-	// or an error if reading fails.
-	ReadRange(ctx context.Context, ranger Ranger) ([]byte, error)
+	// ReadRange reads the bytes defined by the Ranger and returns a ReadCloser,
+	// or an error if reading fails. The caller is responsible for closing the ReadCloser.
+	ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error)
 }
 
 // NewRangeReader parses a URI and returns an appropriate RangeReader implementation.
@@ -134,35 +134,16 @@ func NewFileRangeReader(path string) (*FileRangeReader, error) {
 }
 
 // ReadRange reads bytes from the underlying file at the specified range.
-// It validates the Ranger and handles io.EOF gracefully.
-func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
+// It validates the Ranger and returns a ReadCloser using SectionReader for streaming access.
+func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
 	if err := ranger.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
-
-	offset := int64(ranger.Offset()) //nolint:gosec
-	length := ranger.Length()
-
-	// TODO: use sync.Pool maybe?
-	// only issue is that buf size has high variance due to it
-	// a) reading directories (large) and entries (small).
-	// so sync.Pool needs to be big enough to avoid resizing, and small enough to not bloat
-	// would also mean that the caller would be responsible to put back the buffer to the pool
-	// which is meh.
-	buf := make([]byte, length)
-
-	// ReadAt may return io.EOF or io.ErrUnexpectedEOF, which are safe to ignore
-	// but we clamp them to the actual returned data.
-	n, err := f.file.ReadAt(buf, offset)
-	if err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return buf[:n], nil
-		}
-
-		return nil, err
-	}
-
-	return buf, nil
+	return io.NopCloser(
+		io.NewSectionReader(
+			f.file, int64(ranger.Offset()), int64(ranger.Length()), //nolint:gosec
+		),
+	), nil
 }
 
 // S3Client is an interface providing methods used by the S3RangeReader.
@@ -202,8 +183,8 @@ func NewS3RangeReader(bucket, key string, client S3Client) (*S3RangeReader, erro
 }
 
 // ReadRange reads bytes from the underlying S3 object at the specified range.
-// It validates the Ranger.
-func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
+// It validates the Ranger and returns a ReadCloser for streaming access.
+func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
 	if err := ranger.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
@@ -221,21 +202,10 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, e
 		disableResponseValidation,
 	)
 	if err != nil {
-		return []byte{}, err
-	}
-	defer output.Body.Close() //nolint:errcheck
-
-	buf := make([]byte, length)
-	n, err := io.ReadFull(output.Body, buf)
-	if err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			// Stream ended early, return partial content
-			return buf[:n], nil
-		}
 		return nil, err
 	}
 
-	return buf, nil
+	return output.Body, nil
 }
 
 // disableResponseValidation disables checksum validation on the response.  This

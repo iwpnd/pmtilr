@@ -1,7 +1,6 @@
 package pmtilr
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -59,14 +58,16 @@ func NewHeader(r io.Reader) (*HeaderV3, error) {
 }
 
 func (h *HeaderV3) ReadFrom(ctx context.Context, r RangeReader) (err error) {
-	b, err := r.ReadRange(
+	rangeReader, err := r.ReadRange(
 		ctx,
 		NewRange(HeaderOffset, HeaderSizeBytes),
 	)
 	if err != nil {
 		return fmt.Errorf("reading header: %w", err)
 	}
-	newHeader, err := NewHeader(bytes.NewReader(b))
+	defer rangeReader.Close() //nolint:errcheck
+
+	newHeader, err := NewHeader(rangeReader)
 	if err != nil {
 		return fmt.Errorf("reading header: %w", err)
 	}

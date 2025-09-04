@@ -72,9 +72,15 @@ func TestFileRangeReader(t *testing.T) {
 				t.Fatal("unexpected error")
 			}
 
-			result, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
+			readCloser, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
 			if !errors.Is(err, tt.expectedError) {
 				t.Fatal("expected error, and received error do not match")
+			}
+			
+			result := []byte{}
+			if readCloser != nil {
+				defer readCloser.Close()
+				result, _ = io.ReadAll(readCloser)
 			}
 
 			if len(tt.expectedData) != len(result) {
@@ -171,9 +177,15 @@ func TestS3RangeReader(t *testing.T) {
 				t.Fatal("unexpected error")
 			}
 
-			result, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
+			readCloser, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
 			if !errors.Is(err, tt.expectedError) {
 				t.Fatalf("expected error, and received error do not match")
+			}
+			
+			result := []byte{}
+			if readCloser != nil {
+				defer readCloser.Close()
+				result, _ = io.ReadAll(readCloser)
 			}
 
 			if len(tt.expectedData) != len(result) {

@@ -37,13 +37,15 @@ func (c Compression) MarshalJSON() ([]byte, error) {
 	return json.Marshal(str)
 }
 
-type DecompressFunc = func(r io.Reader, compression Compression) (io.Reader, error)
+type DecompressFunc = func(r io.Reader, compression Compression) (io.ReadCloser, error)
 
-func Decompress(r io.Reader, compression Compression) (io.Reader, error) {
+func Decompress(r io.Reader, compression Compression) (io.ReadCloser, error) {
 	switch compression {
 	case CompressionNone, CompressionUnknown:
-		// No-op
-		return r, nil
+		// No-op, wrap with NopCloser to ensure ReadCloser interface
+		// worst case we redundantly wrap a noop closer, but save on type
+		// assertion calls in those cases.
+		return io.NopCloser(r), nil
 
 	case CompressionGZIP:
 		gr, err := gzip.NewReader(r)

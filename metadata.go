@@ -1,9 +1,9 @@
 package pmtilr
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -23,15 +23,16 @@ func (m *Metadata) ReadFrom(
 	r RangeReader,
 	decompress DecompressFunc,
 ) error {
-	data, err := r.ReadRange(
+	rangeReader, err := r.ReadRange(
 		ctx,
 		NewRange(header.MetadataOffset, header.MetadataLength),
 	)
 	if err != nil {
 		return fmt.Errorf("reading metadata range: %w", err)
 	}
+	defer rangeReader.Close()
 
-	decompReader, err := decompress(bytes.NewReader(data), header.InternalCompression)
+	decompReader, err := decompress(rangeReader, header.InternalCompression)
 	if err != nil {
 		return fmt.Errorf("decompressing metadata: %w", err)
 	}
@@ -41,12 +42,15 @@ func (m *Metadata) ReadFrom(
 		return fmt.Errorf("reading decompressed metadata: %w", err)
 	}
 
-	if closer, ok := decompReader.(io.Closer); ok {
-		cerr := closer.Close()
-		if cerr != nil {
-			return fmt.Errorf("closing decompression reader: %w", cerr)
+	defer func() {
+		if cerr := decompReader.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("closing decompression reader: %w", cerr)
+			} else {
+				err = errors.Join(err, fmt.Errorf("closing decompression reader: %w", cerr))
+			}
 		}
-	}
+	}()
 
 	if err := json.Unmarshal(jsonData, m); err != nil {
 		return fmt.Errorf("unmarshalling metadata: %w", err)
