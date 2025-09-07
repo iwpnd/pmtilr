@@ -11,6 +11,8 @@ import (
 	"iter"
 	"sort"
 	"sync"
+
+	sfx "github.com/iwpnd/singleflightx"
 )
 
 const directoryMaxDepth = 3
@@ -313,6 +315,7 @@ func NewRepository() (*Repository, error) {
 
 	dirs := &Repository{
 		cache: cache,
+		ssg:   &sfx.Group[string, Directory]{},
 	}
 
 	return dirs, nil
@@ -320,6 +323,8 @@ func NewRepository() (*Repository, error) {
 
 type Repository struct {
 	cache Cacher
+
+	ssg *sfx.Group[string, Directory]
 }
 
 func (d *Repository) DirectoryAt(
@@ -334,7 +339,16 @@ func (d *Repository) DirectoryAt(
 	if ok {
 		return dir, nil
 	}
-	dir, err := NewDirectory(ctx, header, reader, ranger, decompress)
+
+	dir, err, _ := d.ssg.Do(key, func() (Directory, error) {
+		// let's first see if the value is already cached in the mean time.
+		dir, ok := d.cache.Get(key)
+		if ok {
+			return dir, nil
+		}
+
+		return NewDirectory(ctx, header, reader, ranger, decompress)
+	})
 	if err != nil {
 		return Directory{}, err
 	}
