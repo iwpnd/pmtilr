@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	DefaultRistrettoNumCounters = 10 * 500 * 1024
-	DefaultRistrettoMaxCost     = 50 * 1024
+	DefaultRistrettoNumCounters = 30_000_000
+	DefaultRistrettoMaxCost     = 100_000_000
 	DefaultRistrettoBufferItems = 64
 )
 
