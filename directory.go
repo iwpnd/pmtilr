@@ -189,13 +189,13 @@ func NewDirectory(
 	reader RangeReader,
 	ranger Ranger,
 	decompress DecompressFunc,
-) (*Directory, error) {
+) (Directory, error) {
 	rangeReader, err := reader.ReadRange(
 		ctx,
 		ranger,
 	)
 	if err != nil {
-		return &Directory{}, fmt.Errorf("reading directory from source: %w", err)
+		return Directory{}, fmt.Errorf("reading directory from source: %w", err)
 	}
 	defer func() {
 		if cerr := rangeReader.Close(); cerr != nil {
@@ -209,7 +209,7 @@ func NewDirectory(
 
 	decompReader, err := decompress(rangeReader, header.InternalCompression)
 	if err != nil {
-		return &Directory{}, fmt.Errorf("decompressing directory: %w", err)
+		return Directory{}, fmt.Errorf("decompressing directory: %w", err)
 	}
 
 	defer func() {
@@ -222,9 +222,9 @@ func NewDirectory(
 		}
 	}()
 
-	dir := &Directory{}
+	dir := Directory{}
 	if err := dir.deserialize(decompReader); err != nil {
-		return &Directory{}, fmt.Errorf("deserializing directory: %w", err)
+		return Directory{}, fmt.Errorf("deserializing directory: %w", err)
 	}
 
 	dir.key = fmt.Sprintf("%s:%d:%d", header.Etag, ranger.Offset(), ranger.Length())
@@ -321,7 +321,7 @@ func NewRepository() (*Repository, error) {
 }
 
 type Repository struct {
-	cache *ristretto.Cache[string, *Directory]
+	cache *ristretto.Cache[string, Directory]
 }
 
 func (d *Repository) DirectoryAt(
@@ -330,7 +330,7 @@ func (d *Repository) DirectoryAt(
 	reader RangeReader,
 	ranger Ranger,
 	decompress DecompressFunc,
-) (*Directory, error) {
+) (Directory, error) {
 	key := fmt.Sprintf(cacheKeyTemplate, header.Etag, ranger.Offset(), ranger.Length())
 	dir, ok := d.cache.Get(key)
 	if ok {
@@ -338,12 +338,13 @@ func (d *Repository) DirectoryAt(
 	}
 	dir, err := NewDirectory(ctx, header, reader, ranger, decompress)
 	if err != nil {
-		return &Directory{}, err
+		return Directory{}, err
 	}
 
 	// NOTE: even if it fails once, eventually it succeeds
 	// ristretto is eventually consistent
 	_ = d.cache.Set(key, dir, 1)
+	d.cache.Wait()
 
 	return dir, nil
 }
@@ -354,14 +355,6 @@ func (d *Repository) Tile(
 	reader RangeReader,
 	decompress DecompressFunc, z, x, y uint64,
 ) ([]byte, error) {
-	if z < uint64(header.MinZoom) && z > uint64(header.MaxZoom) {
-		return []byte{}, fmt.Errorf(
-			"invalid zoom: %d for allowed range of %d to %d",
-			z,
-			header.MinZoom,
-			header.MaxZoom,
-		)
-	}
 	tileId, err := FastZXYToHilbertTileID(z, x, y)
 	if err != nil {
 		return []byte{}, fmt.Errorf("resolving hilbert tile id from z: %d x: %d y: %d", z, x, y)

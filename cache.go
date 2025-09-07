@@ -15,8 +15,8 @@ const (
 	cacheKeyTemplate = "%s:%d:%d" // etag:offset:size
 )
 
-func NewDefaultCache() (*ristretto.Cache[string, *Directory], error) {
-	cfg := &ristretto.Config[string, *Directory]{
+func NewDefaultCache() (*ristretto.Cache[string, Directory], error) {
+	cfg := &ristretto.Config[string, Directory]{
 		NumCounters: getEnv(
 			"PMTILR_RISTRETTO_NUM_COUNTERS",
 			DefaultRistrettoNumCounters,

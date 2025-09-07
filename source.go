@@ -140,17 +140,25 @@ func (s *Source) useSingleFlight(z uint64) bool {
 // level is within the configured singleFlightZoomRange, concurrent calls
 // for the same tile are collapsed into a single request.
 func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
-	if s.useSingleFlight(z) {
-		// Deduplicate concurrent loads of the same tile
-		key := buildSingleflightKey(s.header.Etag, z, x, y)
-		data, err, _ := s.sg.Do(key, func() ([]byte, error) {
-			return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("reading tile with singleflight: %w", err)
-		}
-		return data, nil
+	if z < uint64(s.header.MinZoom) || z > uint64(s.header.MaxZoom) {
+		return []byte{}, fmt.Errorf(
+			"invalid zoom: %d for allowed range of %d to %d",
+			z,
+			s.header.MinZoom,
+			s.header.MaxZoom,
+		)
 	}
+	// if s.useSingleFlight(z) {
+	// 	// Deduplicate concurrent loads of the same tile
+	// 	key := buildSingleflightKey(s.header.Etag, z, x, y)
+	// 	data, err, _ := s.sg.Do(key, func() ([]byte, error) {
+	// 		return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
+	// 	})
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("reading tile with singleflight: %w", err)
+	// 	}
+	// 	return data, nil
+	// }
 	// No deduplication: direct repository call
 	return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
 }
