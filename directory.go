@@ -227,8 +227,6 @@ func NewDirectory(
 		return Directory{}, fmt.Errorf("deserializing directory: %w", err)
 	}
 
-	dir.key = fmt.Sprintf("%s:%d:%d", header.Etag, ranger.Offset(), ranger.Length())
-
 	return dir, nil
 }
 
@@ -352,6 +350,7 @@ func (d *Repository) DirectoryAt(
 	if err != nil {
 		return Directory{}, err
 	}
+	dir.key = key
 
 	_ = d.cache.Set(key, dir)
 
