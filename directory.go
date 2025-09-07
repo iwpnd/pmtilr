@@ -11,8 +11,6 @@ import (
 	"iter"
 	"sort"
 	"sync"
-
-	"github.com/dgraph-io/ristretto/v2"
 )
 
 const directoryMaxDepth = 3
@@ -308,7 +306,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 
 // NOTE: will have options eventually
 func NewRepository() (*Repository, error) {
-	cache, err := NewDefaultCache()
+	cache, err := NewRistrettoCache()
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +319,7 @@ func NewRepository() (*Repository, error) {
 }
 
 type Repository struct {
-	cache *ristretto.Cache[string, Directory]
+	cache Cacher
 }
 
 func (d *Repository) DirectoryAt(
@@ -331,7 +329,7 @@ func (d *Repository) DirectoryAt(
 	ranger Ranger,
 	decompress DecompressFunc,
 ) (Directory, error) {
-	key := fmt.Sprintf(cacheKeyTemplate, header.Etag, ranger.Offset(), ranger.Length())
+	key := buildCacheKey(header.Etag, ranger.Offset(), ranger.Length())
 	dir, ok := d.cache.Get(key)
 	if ok {
 		return dir, nil
@@ -341,10 +339,7 @@ func (d *Repository) DirectoryAt(
 		return Directory{}, err
 	}
 
-	// NOTE: even if it fails once, eventually it succeeds
-	// ristretto is eventually consistent
-	_ = d.cache.Set(key, dir, 1)
-	d.cache.Wait()
+	_ = d.cache.Set(key, dir)
 
 	return dir, nil
 }

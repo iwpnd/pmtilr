@@ -3,16 +3,7 @@ package pmtilr
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"sync"
-
-	"github.com/brunomvsouza/singleflight"
-)
-
-const (
-	singleFlightKeyTemplate    = "%s:%d:%d:%d" // etag:z:x:y
-	singleFlightDefaultMinZoom = 1
-	singleFlightDefaultMaxZoom = 10
 )
 
 // keyBufPool provides a shared buffer pool with 64-byte pre-allocated buffers
@@ -23,30 +14,10 @@ var keyBufPool = sync.Pool{
 	},
 }
 
-// buildSingleflightKey efficiently builds a singleflight key using a shared buffer pool
-func buildSingleflightKey(etag string, z, x, y uint64) string {
-	bufPtr, _ := keyBufPool.Get().(*[]byte) //nolint:errcheck
-	buf := (*bufPtr)[:0]                    // Reset length but keep capacity
-	defer keyBufPool.Put(bufPtr)
-
-	buf = append(buf, etag...)
-	buf = append(buf, ':')
-	buf = strconv.AppendUint(buf, z, 10)
-	buf = append(buf, ':')
-	buf = strconv.AppendUint(buf, x, 10)
-	buf = append(buf, ':')
-	buf = strconv.AppendUint(buf, y, 10)
-
-	return string(buf)
-}
-
 // SourceConfig holds customization options for a Source.
 type SourceConfig struct {
 	// decompress is the function used to unpack raw tile data.
 	decompress DecompressFunc
-	// singleFlightZoomRange defines the inclusive min/max zoom levels
-	// at which singleflight de-duplication is active.
-	singleFlightZoomRange ZoomRange
 }
 
 // SourceConfigOption is a functional option for configuring a Source.
@@ -59,14 +30,6 @@ func WithCustomDecompressFunc(decompressFn DecompressFunc) SourceConfigOption {
 	}
 }
 
-// WithSingleFlightZoomRange sets the zoom range at which singleflight
-// deduplication will be applied.
-func WithSingleFlightZoomRange(zrange [2]uint64) SourceConfigOption {
-	return func(config *SourceConfig) {
-		config.singleFlightZoomRange = zrange
-	}
-}
-
 // Source provides read access to protomap tiles, supporting concurrent
 // loads with singleflight deduplication.
 type Source struct {
@@ -75,9 +38,6 @@ type Source struct {
 	meta       *Metadata     // Metadata for tile index and offsets
 	config     *SourceConfig // Configuration options
 	repository *Repository   // Repository for actual tile reads
-
-	// sg serializes concurrent Tile() calls for the same header.etag/z/x/y
-	sg *singleflight.Group[string, []byte]
 }
 
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
@@ -85,16 +45,11 @@ type Source struct {
 // It returns an error if initial header or metadata reading fails.
 func NewSource(ctx context.Context, uri string, options ...SourceConfigOption) (*Source, error) {
 	config := &SourceConfig{
-		decompress:            Decompress,
-		singleFlightZoomRange: NewZoomRange(singleFlightDefaultMinZoom, singleFlightDefaultMaxZoom),
+		decompress: Decompress,
 	}
 	// Apply user options
 	for _, o := range options {
 		o(config)
-	}
-	// Validate zoom range
-	if err := config.singleFlightZoomRange.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid single flight zoom range: %w", err)
 	}
 
 	reader, err := NewRangeReader(ctx, uri)
@@ -108,7 +63,6 @@ func NewSource(ctx context.Context, uri string, options ...SourceConfigOption) (
 		header: &HeaderV3{},
 		meta:   &Metadata{},
 		config: config,
-		sg:     &singleflight.Group[string, []byte]{},
 	}
 
 	if err := s.header.ReadFrom(ctx, s.reader); err != nil {
@@ -127,13 +81,6 @@ func NewSource(ctx context.Context, uri string, options ...SourceConfigOption) (
 	s.repository = repo
 
 	return s, nil
-}
-
-// useSingleFlight reports whether singleflight deduplication is enabled
-// for the given zoom level z.
-func (s *Source) useSingleFlight(z uint64) bool {
-	return z >= s.config.singleFlightZoomRange.MinZoom() &&
-		z <= s.config.singleFlightZoomRange.MaxZoom()
 }
 
 // Tile returns the raw tile bytes for the specified z, x, y. If the zoom

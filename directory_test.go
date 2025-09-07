@@ -193,11 +193,6 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 
-			// ensure .Set is written
-			// ristretto is eventually consistent, meaning sets
-			// a) can get rejected, b) may take time passing the LFU
-			repo.cache.Wait()
-
 			if !tc.expectError && !tc.expectFromCache {
 				cached, ok := repo.cache.Get(key)
 				if !ok || cached.Key() != dir.Key() {
