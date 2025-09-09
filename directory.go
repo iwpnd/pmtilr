@@ -304,25 +304,31 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 	return
 }
 
-// NOTE: will have options eventually
-func NewRepository() (*Repository, error) {
-	cache, err := NewRistrettoCache()
-	if err != nil {
-		return nil, err
-	}
-
+func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directory]) (*Repository, error) {
 	dirs := &Repository{
 		cache: cache,
-		ssg:   &sfx.Group[string, Directory]{},
+		sg:    singleflight,
 	}
 
 	return dirs, nil
 }
 
+func newDefaultRepository() (*Repository, error) {
+	cache, err := NewRistrettoCache()
+	if err != nil {
+		return nil, err
+	}
+
+	singleflight := sfx.NewShardedGroup[string, Directory](sfx.WithShardCount(3))
+	return &Repository{
+		cache: cache,
+		sg:    singleflight,
+	}, nil
+}
+
 type Repository struct {
 	cache Cacher
-
-	ssg *sfx.Group[string, Directory]
+	sg    sfx.Singleflighter[string, Directory]
 }
 
 func (d *Repository) DirectoryAt(
@@ -338,7 +344,7 @@ func (d *Repository) DirectoryAt(
 		return dir, nil
 	}
 
-	dir, err, _ := d.ssg.Do(key, func() (Directory, error) {
+	dir, err, _ := d.sg.Do(key, func() (Directory, error) {
 		// let's first see if the value is already cached in the mean time.
 		dir, ok := d.cache.Get(key)
 		if ok {

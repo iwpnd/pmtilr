@@ -14,79 +14,92 @@ var keyBufPool = sync.Pool{
 	},
 }
 
-// SourceConfig holds customization options for a Source.
-type SourceConfig struct {
-	// decompress is the function used to unpack raw tile data.
-	decompress DecompressFunc
+// SourceOption is a functional option for configuring a Source.
+type SourceOption = func(source *Source)
+
+// WithDecompressFunc sets a custom decompression function on the Source.
+func WithDecompressFunc(decompressFn DecompressFunc) SourceOption {
+	return func(source *Source) {
+		source.decompress = decompressFn
+	}
 }
 
-// SourceConfigOption is a functional option for configuring a Source.
-type SourceConfigOption = func(config *SourceConfig)
+// WithRepository sets a custom Repository on the Source.
+func WithRepository(repository *Repository) SourceOption {
+	return func(source *Source) {
+		source.repository = repository
+	}
+}
 
-// WithCustomDecompressFunc sets a custom decompression function on the SourceConfig.
-func WithCustomDecompressFunc(decompressFn DecompressFunc) SourceConfigOption {
-	return func(config *SourceConfig) {
-		config.decompress = decompressFn
+// WithRangeReader sets a custom RangeReader on the Source.
+func WithRangeReader(reader RangeReader) SourceOption {
+	return func(source *Source) {
+		source.reader = reader
 	}
 }
 
 // Source provides read access to protomap tiles, supporting concurrent
 // loads with singleflight deduplication.
 type Source struct {
-	reader     RangeReader   // Underlying reader for HTTP range requests
-	header     *HeaderV3     // Parsed header containing tile layout and ETag
-	meta       *Metadata     // Metadata for tile index and offsets
-	config     *SourceConfig // Configuration options
-	repository *Repository   // Repository for actual tile reads
+	reader     RangeReader    // Underlying reader for HTTP range requests
+	header     *HeaderV3      // Parsed header containing tile layout and ETag
+	meta       *Metadata      // Metadata for tile index and offsets
+	repository *Repository    // Repository for actual tile reads
+	decompress DecompressFunc // Function handling decompression on the archive
 }
 
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
 // and immediately loads the header and metadata.
 // It returns an error if initial header or metadata reading fails.
-func NewSource(ctx context.Context, uri string, options ...SourceConfigOption) (*Source, error) {
-	config := &SourceConfig{
-		decompress: Decompress,
-	}
-	// Apply user options
-	for _, o := range options {
-		o(config)
-	}
-
-	reader, err := NewRangeReader(ctx, uri)
-	if err != nil {
-		return nil, err
-	}
-
+func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Source, error) {
 	// Create Source with defaults
 	s := &Source{
-		reader: reader,
 		header: &HeaderV3{},
 		meta:   &Metadata{},
-		config: config,
+	}
+
+	// apply user options
+	for _, optFn := range options {
+		optFn(s)
+	}
+
+	// Initialize default reader unless configured.
+	if s.reader == nil {
+		reader, err := NewRangeReader(ctx, uri)
+		if err != nil {
+			return nil, err
+		}
+		s.reader = reader
+	}
+
+	// Initialize default repository unless configured.
+	if s.repository == nil {
+		repository, err := newDefaultRepository()
+		if err != nil {
+			return nil, err
+		}
+		s.repository = repository
+	}
+
+	// Initialize default decompress function unless configured.
+	if s.decompress == nil {
+		s.decompress = Decompress
 	}
 
 	if err := s.header.ReadFrom(ctx, s.reader); err != nil {
 		return nil, err
 	}
 
-	if err := s.meta.ReadFrom(ctx, *s.header, s.reader, s.config.decompress); err != nil {
+	if err := s.meta.ReadFrom(ctx, *s.header, s.reader, s.decompress); err != nil {
 		return nil, err
 	}
-
-	// Initialize repository for tile decoding
-	repo, err := NewRepository()
-	if err != nil {
-		return nil, err
-	}
-	s.repository = repo
 
 	return s, nil
 }
 
-// Tile returns the raw tile bytes for the specified z, x, y. If the zoom
-// level is within the configured singleFlightZoomRange, concurrent calls
-// for the same tile are collapsed into a single request.
+// Tile returns the raw tile bytes for the specified z, x, y.
 func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
+	// NOTE: maybe validate zxy against header.bounds
 	if z < uint64(s.header.MinZoom) || z > uint64(s.header.MaxZoom) {
 		return []byte{}, fmt.Errorf(
 			"invalid zoom: %d for allowed range of %d to %d",
@@ -95,19 +108,7 @@ func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
 			s.header.MaxZoom,
 		)
 	}
-	// if s.useSingleFlight(z) {
-	// 	// Deduplicate concurrent loads of the same tile
-	// 	key := buildSingleflightKey(s.header.Etag, z, x, y)
-	// 	data, err, _ := s.sg.Do(key, func() ([]byte, error) {
-	// 		return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
-	// 	})
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("reading tile with singleflight: %w", err)
-	// 	}
-	// 	return data, nil
-	// }
-	// No deduplication: direct repository call
-	return s.repository.Tile(ctx, s.Header(), s.reader, s.config.decompress, z, x, y)
+	return s.repository.Tile(ctx, s.Header(), s.reader, s.decompress, z, x, y)
 }
 
 // Header returns a copy of the current header.

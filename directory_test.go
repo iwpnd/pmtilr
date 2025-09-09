@@ -175,7 +175,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 	}
 
 	ctx := t.Context()
-	repo, err := NewRepository()
+	repo, err := newDefaultRepository()
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
