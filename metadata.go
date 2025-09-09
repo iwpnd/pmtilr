@@ -15,6 +15,8 @@ type Metadata struct {
 	Type         string `json:"type"`
 	Version      string `json:"version"`
 	VectorLayers []any  `json:"vector_layers"`
+
+	metadataStr string // cache string representation
 }
 
 func (m *Metadata) ReadFrom(
@@ -68,9 +70,16 @@ func (m *Metadata) ReadFrom(
 }
 
 func (m Metadata) String() string {
+	if m.metadataStr != "" {
+		return m.metadataStr
+	}
+
 	jsonBytes, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return `{"error": "failed to marshal Metadata"}`
 	}
-	return string(jsonBytes)
+
+	m.metadataStr = string(jsonBytes)
+
+	return m.metadataStr
 }

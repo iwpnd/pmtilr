@@ -42,6 +42,8 @@ type HeaderV3 struct {
 	CenterZoom          uint8       `json:"center_zoom"`
 	CenterLonE7         int32       `json:"center_lon_e7"`
 	CenterLatE7         int32       `json:"center_lat_e7"`
+
+	headerStr string // cache string representation.
 }
 
 func NewHeader(r io.Reader) (*HeaderV3, error) {
@@ -81,11 +83,18 @@ func (h *HeaderV3) ReadFrom(ctx context.Context, r RangeReader) (err error) {
 }
 
 func (h HeaderV3) String() string {
+	if h.headerStr != "" {
+		return h.headerStr
+	}
+
 	jsonBytes, err := json.MarshalIndent(h, "", "  ")
 	if err != nil {
 		return `{"error": "failed to marshal HeaderV3"}`
 	}
-	return string(jsonBytes)
+
+	h.headerStr = string(jsonBytes)
+
+	return h.headerStr
 }
 
 func (h *HeaderV3) deserialize(d []byte) error {
