@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -75,15 +74,6 @@ func readEntries(br *bufio.Reader) (entries Entries, err error) {
 	}
 
 	return
-}
-
-// String returns a JSON string of the Entry.
-func (e Entry) String() string {
-	jsonBytes, err := json.MarshalIndent(e, "", "  ")
-	if err != nil {
-		return `{"error": "failed to marshal entry"}`
-	}
-	return string(jsonBytes)
 }
 
 // deserialize populates the Entries slice by reading tile ID deltas,
