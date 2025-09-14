@@ -20,10 +20,21 @@ type Cacher interface {
 }
 
 func NewRistrettoCache(opts ...RistrettoCacheOption) (*RistrettoCache, error) {
+	//nolint:gocritic
+	// cfg := &ristretto.Config[string, Directory]{
+	// 	NumCounters: DefaultRistrettoNumCounters,
+	// 	MaxCost:     DefaultRistrettoMaxCost,
+	// 	BufferItems: DefaultRistrettoBufferItems,
+	// }
+
 	cfg := &ristretto.Config[string, Directory]{
-		NumCounters: DefaultRistrettoNumCounters,
-		MaxCost:     DefaultRistrettoMaxCost,
-		BufferItems: DefaultRistrettoBufferItems,
+		NumCounters: 2_800_000,
+		MaxCost:     53 * 1024 * 1024,
+
+		BufferItems:        64,
+		Metrics:            false,
+		IgnoreInternalCost: false,
+		Cost:               func(v Directory) int64 { return int64(v.Size()) }, //nolint:gosec
 	}
 
 	for _, o := range opts {
@@ -68,7 +79,7 @@ func (rc *RistrettoCache) Get(key string) (Directory, bool) {
 }
 
 func (rc *RistrettoCache) Set(key string, value Directory) bool {
-	ok := rc.cache.Set(key, value, 1)
+	ok := rc.cache.Set(key, value, 0) // 0 lets ristretto use Cost() to calc
 	rc.cache.Wait()
 
 	return ok
