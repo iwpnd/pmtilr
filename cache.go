@@ -20,7 +20,7 @@ type Cacher interface {
 	Clear()
 }
 
-func NewRistrettoCache(opts ...RistrettoCacheOption) (*RistrettoCache, error) {
+func NewRistrettoCache(opts ...RistrettoCacheOption) (Cacher, error) {
 	cfg := &ristretto.Config[string, Directory]{
 		NumCounters:        DefaultRistrettoNumCounters,
 		MaxCost:            DefaultRistrettoMaxCost,
@@ -86,10 +86,10 @@ func (rc *RistrettoCache) Clear() {
 	rc.cache.Clear()
 }
 
-func NewOtterCache() (*OtterCache, error) {
+func NewOtterCache() (Cacher, error) {
 	cache, err := otter.New(&otter.Options[string, Directory]{
-		MaximumSize:     10_000,
-		InitialCapacity: 1_000,
+		MaximumSize:     100_000,
+		InitialCapacity: 10_000,
 	})
 	if err != nil {
 		return nil, err
