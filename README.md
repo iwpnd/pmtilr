@@ -8,8 +8,13 @@ A standalone Go reader for [PMTiles](https://github.com/protomaps/PMTiles) that 
 ## Features
 
 * Fast Hilbert ID resolution for quick tile look‑ups
-* Default Ristretto in‑memory cache (or bring‑your‑own cache support)
+* Default [otter/v2](https://maypok86.github.io/otter) in‑memory cache (or bring‑your‑own cache support)
 * Protocol‑agnostic range reader (`file://`, `s3://`, extensible)
+
+
+## TODO
+
+* add [blob](https://gocloud.dev/howto/blob/#using)
 
 ## Installation
 
