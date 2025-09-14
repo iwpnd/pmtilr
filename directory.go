@@ -379,9 +379,7 @@ func (r *Repository) Tile(
 
 		return r.readTileBytes(
 			ctx,
-			header,
 			reader,
-			decompress,
 			header.TileDataOffset+entry.Offset, entry.Length,
 		)
 	}
@@ -389,18 +387,13 @@ func (r *Repository) Tile(
 	return nil, fmt.Errorf("maximum directory depth exceeded")
 }
 
-func (r *Repository) readTileBytes(ctx context.Context, h HeaderV3, rr RangeReader, decompress DecompressFunc, offset, length uint64) ([]byte, error) {
+func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, length uint64) ([]byte, error) {
 	rc, err := rr.ReadRange(ctx, NewRange(offset, length))
 	if err != nil {
 		return nil, err
 	}
-	decomp, err := decompress(rc, h.TileCompression)
-	if err != nil {
-		_ = rc.Close() //nolint:errcheck
-		return nil, fmt.Errorf("decompressing tile entry: %w", err)
-	}
 	defer func() {
-		if cerr := decomp.Close(); cerr != nil {
+		if cerr := rc.Close(); cerr != nil {
 			if err == nil {
 				err = fmt.Errorf("closing tile reader: %w", cerr)
 			} else {
@@ -409,7 +402,7 @@ func (r *Repository) readTileBytes(ctx context.Context, h HeaderV3, rr RangeRead
 		}
 	}()
 
-	b, err := io.ReadAll(decomp)
+	b, err := io.ReadAll(rc)
 	if err != nil {
 		return nil, fmt.Errorf("reading decompressed tile: %w", err)
 	}
