@@ -89,7 +89,7 @@ func NewGZIPReadCloser(rc io.ReadCloser) (io.ReadCloser, error) {
 	zr, _ := gzPool.Get().(*gzip.Reader) //nolint:errcheck
 	if err := zr.Reset(rc); err != nil {
 		gzPool.Put(zr)
-		_ = rc.Close() // ensure underlying is closed on init failure
+		_ = rc.Close() //nolint:errcheck // ensure underlying is closed on init failure
 		return nil, err
 	}
 	return GZIPReadCloser{
