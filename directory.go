@@ -187,15 +187,6 @@ func NewDirectory(
 	if err != nil {
 		return Directory{}, fmt.Errorf("reading directory from source: %w", err)
 	}
-	defer func() {
-		if cerr := rangeReader.Close(); cerr != nil {
-			if err == nil {
-				err = cerr
-			} else {
-				err = errors.Join(err, cerr)
-			}
-		}
-	}()
 
 	decompReader, err := decompress(rangeReader, header.InternalCompression)
 	if err != nil {

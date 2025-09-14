@@ -268,11 +268,11 @@ func fakeHeader(etag string) HeaderV3 {
 	}
 }
 
-func noopDecompressor(r io.Reader, _ Compression) (io.ReadCloser, error) {
+func noopDecompressor(r io.ReadCloser, _ Compression) (io.ReadCloser, error) {
 	return io.NopCloser(r), nil
 }
 
-func errorDecompressor(r io.Reader, _ Compression) (io.ReadCloser, error) {
+func errorDecompressor(r io.ReadCloser, _ Compression) (io.ReadCloser, error) {
 	return nil, errors.New("failed to decompress")
 }
 

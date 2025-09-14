@@ -54,7 +54,7 @@ func TestDecompress(t *testing.T) {
 				r = bytes.NewReader([]byte(tc.input))
 			}
 
-			dr, err := Decompress(r, tc.compression)
+			dr, err := Decompress(io.NopCloser(r), tc.compression)
 			if tc.expectError {
 				if err == nil {
 					t.Errorf("expected error, got none")
