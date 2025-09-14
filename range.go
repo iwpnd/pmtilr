@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -189,10 +190,7 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCl
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
 
-	offset := ranger.Offset()
-	length := ranger.Length()
-
-	byteRange := fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+	byteRange := bytesRange(ranger.Offset(), ranger.Length())
 	output, err := s.client.GetObject(ctx,
 		&s3.GetObjectInput{
 			Bucket: aws.String(s.bucket),
@@ -216,4 +214,17 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCl
 // check full stop.
 func disableResponseValidation(o *s3.Options) {
 	o.ResponseChecksumValidation = aws.ResponseChecksumValidationUnset
+}
+
+func bytesRange(offset, length uint64) string {
+	bufPtr, _ := keyBufPool.Get().(*[]byte) //nolint:errcheck
+	buf := (*bufPtr)[:0]                    // Reset length but keep capacity
+	defer keyBufPool.Put(bufPtr)
+
+	buf = append(buf, "bytes="...)
+	buf = strconv.AppendUint(buf, offset, 10)
+	buf = append(buf, '-')
+	buf = strconv.AppendUint(buf, offset+length-1, 10)
+
+	return string(buf)
 }
