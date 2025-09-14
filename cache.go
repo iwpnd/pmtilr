@@ -7,18 +7,33 @@ import (
 	"github.com/maypok86/otter/v2"
 )
 
-const (
-	DefaultRistrettoNumCounters = 30_000_000
-	DefaultRistrettoMaxCost     = 100_000_000
-	DefaultRistrettoBufferItems = 64
-)
-
 type Cacher interface {
 	Get(key string) (Directory, bool)
 	Set(key string, value Directory) bool
 	Close()
 	Clear()
 }
+
+// buildCacheKey efficiently builds a singleflight key using a shared buffer pool
+func buildCacheKey(etag string, offset, length uint64) string {
+	bufPtr, _ := keyBufPool.Get().(*[]byte) //nolint:errcheck
+	buf := (*bufPtr)[:0]                    // Reset length but keep capacity
+	defer keyBufPool.Put(bufPtr)
+
+	buf = append(buf, etag...)
+	buf = append(buf, ':')
+	buf = strconv.AppendUint(buf, offset, 10)
+	buf = append(buf, ':')
+	buf = strconv.AppendUint(buf, length, 10)
+
+	return string(buf)
+}
+
+const (
+	DefaultRistrettoNumCounters = 30_000_000
+	DefaultRistrettoMaxCost     = 100_000_000
+	DefaultRistrettoBufferItems = 64
+)
 
 func NewRistrettoCache(opts ...RistrettoCacheOption) (Cacher, error) {
 	cfg := &ristretto.Config[string, Directory]{
@@ -42,21 +57,6 @@ func NewRistrettoCache(opts ...RistrettoCacheOption) (Cacher, error) {
 	return &RistrettoCache{
 		cache: cache,
 	}, nil
-}
-
-// buildCacheKey efficiently builds a singleflight key using a shared buffer pool
-func buildCacheKey(etag string, offset, length uint64) string {
-	bufPtr, _ := keyBufPool.Get().(*[]byte) //nolint:errcheck
-	buf := (*bufPtr)[:0]                    // Reset length but keep capacity
-	defer keyBufPool.Put(bufPtr)
-
-	buf = append(buf, etag...)
-	buf = append(buf, ':')
-	buf = strconv.AppendUint(buf, offset, 10)
-	buf = append(buf, ':')
-	buf = strconv.AppendUint(buf, length, 10)
-
-	return string(buf)
 }
 
 type RistrettoCache struct {
@@ -86,10 +86,15 @@ func (rc *RistrettoCache) Clear() {
 	rc.cache.Clear()
 }
 
+const (
+	DefaultOtterMaximumSize     = 10_000
+	DefaultOtterInitialCapacity = 1_000
+)
+
 func NewOtterCache() (Cacher, error) {
 	cache, err := otter.New(&otter.Options[string, Directory]{
-		MaximumSize:     100_000,
-		InitialCapacity: 10_000,
+		MaximumSize:     DefaultOtterMaximumSize,
+		InitialCapacity: DefaultOtterInitialCapacity,
 	})
 	if err != nil {
 		return nil, err

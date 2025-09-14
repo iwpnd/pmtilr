@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"os"
 	"sort"
 	"sync"
 
@@ -296,16 +295,9 @@ func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directo
 }
 
 func newDefaultRepository() (*Repository, error) {
-	cache, err := NewRistrettoCache()
+	cache, err := NewOtterCache()
 	if err != nil {
 		return nil, err
-	}
-
-	if _, ok := os.LookupEnv("OTTERPLS"); ok {
-		cache, err = NewOtterCache()
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	singleflight := sfx.NewShardedGroup[string, Directory](sfx.WithShardCount(3))
