@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/dgraph-io/ristretto/v2"
+	"github.com/maypok86/otter/v2"
 )
 
 const (
@@ -20,18 +21,10 @@ type Cacher interface {
 }
 
 func NewRistrettoCache(opts ...RistrettoCacheOption) (*RistrettoCache, error) {
-	//nolint:gocritic
-	// cfg := &ristretto.Config[string, Directory]{
-	// 	NumCounters: DefaultRistrettoNumCounters,
-	// 	MaxCost:     DefaultRistrettoMaxCost,
-	// 	BufferItems: DefaultRistrettoBufferItems,
-	// }
-
 	cfg := &ristretto.Config[string, Directory]{
-		NumCounters: 2_800_000,
-		MaxCost:     53 * 1024 * 1024,
-
-		BufferItems:        64,
+		NumCounters:        DefaultRistrettoNumCounters,
+		MaxCost:            DefaultRistrettoMaxCost,
+		BufferItems:        DefaultRistrettoBufferItems,
 		Metrics:            false,
 		IgnoreInternalCost: false,
 		Cost:               func(v Directory) int64 { return int64(v.Size()) }, //nolint:gosec
@@ -92,3 +85,32 @@ func (rc *RistrettoCache) Close() {
 func (rc *RistrettoCache) Clear() {
 	rc.cache.Clear()
 }
+
+func NewOtterCache() (*OtterCache, error) {
+	cache, err := otter.New(&otter.Options[string, Directory]{
+		MaximumSize:     10_000,
+		InitialCapacity: 1_000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &OtterCache{cache: cache}, nil
+}
+
+type OtterCache struct {
+	cache *otter.Cache[string, Directory]
+}
+
+func (oc *OtterCache) Get(key string) (Directory, bool) {
+	return oc.cache.GetIfPresent(key)
+}
+
+func (oc *OtterCache) Set(key string, value Directory) bool {
+	_, ok := oc.cache.Set(key, value)
+
+	return ok
+}
+
+func (oc *OtterCache) Close() {}
+
+func (oc *OtterCache) Clear() {}

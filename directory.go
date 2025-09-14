@@ -295,7 +295,7 @@ func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directo
 }
 
 func newDefaultRepository() (*Repository, error) {
-	cache, err := NewRistrettoCache()
+	cache, err := NewOtterCache()
 	if err != nil {
 		return nil, err
 	}
