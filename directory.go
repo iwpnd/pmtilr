@@ -312,7 +312,7 @@ type Repository struct {
 	sg    sfx.Singleflighter[string, Directory]
 }
 
-func (d *Repository) DirectoryAt(
+func (r *Repository) DirectoryAt(
 	ctx context.Context,
 	header HeaderV3,
 	reader RangeReader,
@@ -320,14 +320,14 @@ func (d *Repository) DirectoryAt(
 	decompress DecompressFunc,
 ) (Directory, error) {
 	key := buildCacheKey(header.Etag, ranger.Offset(), ranger.Length())
-	dir, ok := d.cache.Get(key)
+	dir, ok := r.cache.Get(key)
 	if ok {
 		return dir, nil
 	}
 
-	dir, err, _ := d.sg.Do(key, func() (Directory, error) {
+	dir, err, _ := r.sg.Do(key, func() (Directory, error) {
 		// let's first see if the value is already cached in the mean time.
-		dir, ok := d.cache.Get(key)
+		dir, ok := r.cache.Get(key)
 		if ok {
 			return dir, nil
 		}
@@ -339,73 +339,87 @@ func (d *Repository) DirectoryAt(
 	}
 	dir.key = key
 
-	_ = d.cache.Set(key, dir)
+	_ = r.cache.Set(key, dir)
 
 	return dir, nil
 }
 
-func (d *Repository) Tile(
+func (r *Repository) Tile(
 	ctx context.Context,
 	header HeaderV3,
 	reader RangeReader,
 	decompress DecompressFunc, z, x, y uint64,
-) ([]byte, error) {
+) (tileData []byte, err error) { // named returns so deferred close can update err
 	tileId, err := FastZXYToHilbertTileID(z, x, y)
 	if err != nil {
-		return []byte{}, fmt.Errorf("resolving hilbert tile id from z: %d x: %d y: %d", z, x, y)
+		return nil, fmt.Errorf("resolving hilbert tile id from z:%d x:%d y:%d", z, x, y)
 	}
 
 	dO := header.RootOffset
 	dS := header.RootLength
+
 	for range directoryMaxDepth {
-		dir, err := d.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
-		if err != nil {
-			return []byte{}, err
+		dir, derr := r.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
+		if derr != nil {
+			return nil, derr
 		}
 		entry := dir.FindTile(tileId)
-		if entry != nil {
-			// entry is not a directory and we can attempt to read the tile data
-			if entry.RunLength > 0 {
-				rangeReader, err := reader.ReadRange(
-					ctx,
-					NewRange(header.TileDataOffset+entry.Offset, entry.Length),
-				)
-				if err != nil {
-					return []byte{}, err
-				}
+		if entry == nil {
+			// Not found
+			return nil, nil
+		}
 
-				decompReader, err := decompress(rangeReader, header.TileCompression)
-				if err != nil {
-					rangeReader.Close() //nolint:errcheck
-					return []byte{}, fmt.Errorf("decompressing tile entry: %w", err)
-				}
-
-				tileData, err := io.ReadAll(decompReader)
-				rangeReader.Close() //nolint:errcheck
-				if err != nil {
-					return []byte{}, fmt.Errorf("reading decompressed metadata: %w", err)
-				}
-
-				if cerr := decompReader.Close(); cerr != nil {
-					return []byte{}, fmt.Errorf("closing decompression reader: %w", cerr)
-				}
-
-				return tileData, nil
-			}
-			// entry is a directory and we want to traverse the directory tree further
+		// is it a directory, then dive deeper
+		if entry.RunLength == 0 {
+			// Dive further
 			dO = header.LeafDirectoryOffset + entry.Offset
 			dS = entry.Length
-		} else {
-			return []byte{}, nil
+			continue
 		}
+
+		return r.readTileBytes(
+			ctx,
+			header,
+			reader,
+			decompress,
+			header.TileDataOffset+entry.Offset, entry.Length,
+		)
 	}
-	return []byte{}, fmt.Errorf("maximum directory depth exceeded")
+
+	return nil, fmt.Errorf("maximum directory depth exceeded")
 }
 
-func (d *Repository) Flush() {
-	d.cache.Clear()
+func (r *Repository) readTileBytes(ctx context.Context, h HeaderV3, rr RangeReader, decompress DecompressFunc, offset, length uint64) ([]byte, error) {
+	rc, err := rr.ReadRange(ctx, NewRange(offset, length))
+	if err != nil {
+		return nil, err
+	}
+	decomp, err := decompress(rc, h.TileCompression)
+	if err != nil {
+		_ = rc.Close() //nolint:errcheck
+		return nil, fmt.Errorf("decompressing tile entry: %w", err)
+	}
+	defer func() {
+		if cerr := decomp.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("closing tile reader: %w", cerr)
+			} else {
+				err = errors.Join(err, fmt.Errorf("closing tile reader: %w", cerr))
+			}
+		}
+	}()
+
+	b, err := io.ReadAll(decomp)
+	if err != nil {
+		return nil, fmt.Errorf("reading decompressed tile: %w", err)
+	}
+	return b, nil
 }
 
-func (d *Repository) Close() {
-	d.cache.Close()
+func (r *Repository) Flush() {
+	r.cache.Clear()
+}
+
+func (r *Repository) Close() {
+	r.cache.Close()
 }
