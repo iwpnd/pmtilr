@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/aws/aws-sdk-go-v2 v1.39.0
 	github.com/aws/aws-sdk-go-v2/config v1.31.8
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.1
 	github.com/dgraph-io/ristretto/v2 v2.3.0
 	github.com/iwpnd/singleflightx v1.0.1
 	github.com/maypok86/otter/v2 v2.2.1
