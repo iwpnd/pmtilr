@@ -1,10 +1,22 @@
 version: 2
 updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: monthly
   - package-ecosystem: gomod
     directory: /
+    commit-message:
+      prefix: "chore(deps): "
     schedule:
       interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    commit-message:
+      prefix: "ci(gha): "
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /
+    commit-message:
+      prefix: "build(docker): "
+    schedule:
+      interval: monthly
