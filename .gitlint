@@ -116,4 +116,4 @@ ignore=B6,CC1
 # under [general] section above.
 [contrib-title-conventional-commits]
 # Specify allowed commit types. For details see: https://www.conventionalcommits.org/
-types = feat,fix,refactor,docs,ci,chore
+types = feat,fix,refactor,docs,ci,chore,test,build
