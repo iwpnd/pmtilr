@@ -79,7 +79,7 @@ func (h *HeaderV3) ReadFrom(ctx context.Context, r RangeReader) (err error) {
 
 	*h = *newHeader
 
-	return
+	return err
 }
 
 func (h HeaderV3) String() string {
@@ -132,15 +132,15 @@ func (h *HeaderV3) deserialize(d []byte) error {
 	// 5) zoom & bounds
 	h.MinZoom = d[100]
 	h.MaxZoom = d[101]
-	h.MinLonE7 = int32(binary.LittleEndian.Uint32(d[102:106])) //nolint:gosec
-	h.MinLatE7 = int32(binary.LittleEndian.Uint32(d[106:110])) //nolint:gosec
-	h.MaxLonE7 = int32(binary.LittleEndian.Uint32(d[110:114])) //nolint:gosec
-	h.MaxLatE7 = int32(binary.LittleEndian.Uint32(d[114:118])) //nolint:gosec
+	h.MinLonE7 = int32(binary.LittleEndian.Uint32(d[102:106])) / 10_000_000 //nolint:gosec
+	h.MinLatE7 = int32(binary.LittleEndian.Uint32(d[106:110])) / 10_000_000 //nolint:gosec
+	h.MaxLonE7 = int32(binary.LittleEndian.Uint32(d[110:114])) / 10_000_000 //nolint:gosec
+	h.MaxLatE7 = int32(binary.LittleEndian.Uint32(d[114:118])) / 10_000_000 //nolint:gosec
 
 	// 6) center point
 	h.CenterZoom = d[118]
-	h.CenterLonE7 = int32(binary.LittleEndian.Uint32(d[119:123])) //nolint:gosec
-	h.CenterLatE7 = int32(binary.LittleEndian.Uint32(d[123:127])) //nolint:gosec
+	h.CenterLonE7 = int32(binary.LittleEndian.Uint32(d[119:123])) / 10_000_000 //nolint:gosec
+	h.CenterLatE7 = int32(binary.LittleEndian.Uint32(d[123:127])) / 10_000_000 //nolint:gosec
 
 	return nil
 }
