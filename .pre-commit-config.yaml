@@ -22,7 +22,7 @@ repos:
       - id: gitlint
         stages: [commit-msg]
   - repo: https://github.com/iwpnd/pre-commit-devmoji
-    rev: v0.0.5
+    rev: v0.0.6
     hooks:
       - id: devmoji
         stages: [prepare-commit-msg]
