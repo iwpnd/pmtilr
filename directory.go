@@ -73,7 +73,7 @@ func readEntries(br *bufio.Reader) (entries Entries, err error) {
 		return entries, err
 	}
 
-	return
+	return entries, err
 }
 
 // deserialize populates the Entries slice by reading tile ID deltas,
@@ -97,7 +97,7 @@ func (e Entries) deserialize(br *bufio.Reader) (err error) {
 		}
 	}
 
-	return
+	return err
 }
 
 // addTileID reads and decodes tile ID deltas from the reader.
@@ -117,7 +117,7 @@ func (e Entries) addTileID(br *bufio.Reader) (err error) {
 		e[i].TileID = lastId + delta
 		lastId = e[i].TileID
 	}
-	return
+	return err
 }
 
 // addRunLength reads and assigns run lengths for each entry.
@@ -130,7 +130,7 @@ func (e Entries) addRunLength(br *bufio.Reader) (err error) {
 		}
 		e[i].RunLength = uint32(runLength) //nolint:gosec
 	}
-	return
+	return err
 }
 
 // addLength reads and assigns the byte length for each tile entry.
@@ -143,7 +143,7 @@ func (e Entries) addLength(br *bufio.Reader) (err error) {
 		}
 		e[i].Length = length
 	}
-	return
+	return err
 }
 
 // addOffset reads and assigns byte offsets for each entry.
@@ -166,7 +166,7 @@ func (e Entries) addOffset(br *bufio.Reader) (err error) {
 			e[i].Offset = offset - 1
 		}
 	}
-	return
+	return err
 }
 
 // NewDirectory creates a new Directory. A directory is a collection of
@@ -282,7 +282,7 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 	d.entries = entries
 	d.size = uint64(len(entries))
 
-	return
+	return err
 }
 
 func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directory]) (*Repository, error) {
@@ -349,7 +349,7 @@ func (r *Repository) Tile(
 	header HeaderV3,
 	reader RangeReader,
 	decompress DecompressFunc, z, x, y uint64,
-) (tileData []byte, err error) { // named returns so deferred close can update err
+) ([]byte, error) {
 	tileId, err := FastZXYToHilbertTileID(z, x, y)
 	if err != nil {
 		return nil, fmt.Errorf("resolving hilbert tile id from z:%d x:%d y:%d", z, x, y)
@@ -363,6 +363,7 @@ func (r *Repository) Tile(
 		if derr != nil {
 			return nil, derr
 		}
+
 		entry := dir.FindTile(tileId)
 		if entry == nil {
 			// Not found
@@ -404,7 +405,7 @@ func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, 
 
 	b, err := io.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("reading decompressed tile: %w", err)
+		return nil, fmt.Errorf("reading tile: %w", err)
 	}
 	return b, nil
 }

@@ -75,7 +75,7 @@ linters:
         main:
           files:
             - $all
-            - '!$test'
+            - "!$test"
           deny:
             - pkg: reflect
               desc: Reflection is never clear.
@@ -111,7 +111,7 @@ linters:
     nolintlint:
       require-explanation: false
       require-specific: true
-      allow-no-explanation: ['gosec']
+      allow-no-explanation: ["gosec"]
     prealloc:
       simple: true
       range-loops: true
@@ -141,21 +141,22 @@ linters:
         text: (unnamedResult|exitAfterDefer)
       - linters:
           - gocritic
-        text: '(hugeParam|rangeValCopy):'
+        text: "(hugeParam|rangeValCopy):"
       - linters:
           - staticcheck
-        text: 'SA3000:'
+        text: "SA3000:"
       - linters:
           - gosec
-        text: 'G101:'
+        text: "G101:"
       - linters:
           - gosec
-        text: 'G104:'
+        text: "G104:"
       - linters:
           - gosec
-        text: 'G404:'
+        text: "G404:"
     paths:
       - cmd/tmp/
+      - tmp/
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
