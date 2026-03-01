@@ -3,7 +3,6 @@ package pmtilr
 import (
 	"strconv"
 
-	"github.com/dgraph-io/ristretto/v2"
 	"github.com/maypok86/otter/v2"
 )
 
@@ -27,63 +26,6 @@ func buildCacheKey(etag string, offset, length uint64) string {
 	buf = strconv.AppendUint(buf, length, 10)
 
 	return string(buf)
-}
-
-const (
-	DefaultRistrettoNumCounters = 30_000_000
-	DefaultRistrettoMaxCost     = 100_000_000
-	DefaultRistrettoBufferItems = 64
-)
-
-func NewRistrettoCache(opts ...RistrettoCacheOption) (Cacher, error) {
-	cfg := &ristretto.Config[string, Directory]{
-		NumCounters:        DefaultRistrettoNumCounters,
-		MaxCost:            DefaultRistrettoMaxCost,
-		BufferItems:        DefaultRistrettoBufferItems,
-		Metrics:            false,
-		IgnoreInternalCost: false,
-		Cost:               func(v Directory) int64 { return int64(v.Size()) }, //nolint:gosec
-	}
-
-	for _, o := range opts {
-		o(cfg)
-	}
-
-	cache, err := ristretto.NewCache(cfg)
-	if err != nil {
-		return &RistrettoCache{}, err
-	}
-
-	return &RistrettoCache{
-		cache: cache,
-	}, nil
-}
-
-type RistrettoCache struct {
-	cache *ristretto.Cache[string, Directory]
-}
-
-type RistrettoCacheOption = func(
-	rc *ristretto.Config[string, Directory],
-) func(rc *ristretto.Config[string, Directory])
-
-func (rc *RistrettoCache) Get(key string) (Directory, bool) {
-	return rc.cache.Get(key)
-}
-
-func (rc *RistrettoCache) Set(key string, value Directory) bool {
-	ok := rc.cache.Set(key, value, 0) // 0 lets ristretto use Cost() to calc
-	rc.cache.Wait()
-
-	return ok
-}
-
-func (rc *RistrettoCache) Close() {
-	rc.cache.Close()
-}
-
-func (rc *RistrettoCache) Clear() {
-	rc.cache.Clear()
 }
 
 const (
