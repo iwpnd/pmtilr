@@ -1,18 +1,14 @@
 package pmtilr
 
-import (
-	"context"
-)
+import "context"
 
 type Role int
 
 const (
-	Leader = iota
+	Leader Role = iota
 	Waiter
 )
 
-// Response is the concatenated response that is fetched
-// once from the Leader.
 type Response struct {
 	Body []byte
 	Err  error
@@ -23,17 +19,8 @@ type Ticket struct {
 	res  *Response
 }
 
-func (t Ticket) Done() <-chan struct{} {
-	return t.done
-}
-
-func (t Ticket) Result() Response {
-	return *t.res
-}
-
-func spanKey(offset, length uint64) string {
-	return buildCacheKey("span", offset, length)
-}
+func (t Ticket) Done() <-chan struct{} { return t.done }
+func (t Ticket) Result() Response      { return *t.res }
 
 type acquireReq struct {
 	key string
@@ -43,7 +30,6 @@ type acquireReq struct {
 type acquireResp struct {
 	role   Role
 	ticket Ticket
-	err    error
 }
 
 type completeReq struct {
@@ -58,30 +44,38 @@ type entry struct {
 }
 
 type InflightActor struct {
-	inbox      chan any
+	acquireCh  chan acquireReq
+	completeCh chan completeReq
 	maxWaiters int
 	m          map[string]*entry
 }
 
-func NewInflightActor(maxWaiters, inboxBuffer int) *InflightActor {
+func NewInflightActor(maxWaiters int, acquireBuffer int) *InflightActor {
 	a := &InflightActor{
-		inbox:      make(chan any, inboxBuffer),
+		acquireCh:  make(chan acquireReq, acquireBuffer),
+		completeCh: make(chan completeReq, 64),
 		maxWaiters: maxWaiters,
 		m:          make(map[string]*entry),
 	}
-
 	go a.run()
-
 	return a
 }
 
 func (a *InflightActor) run() {
-	for msg := range a.inbox {
-		switch m := msg.(type) {
-		case acquireReq:
-			a.onAcquire(m)
-		case completeReq:
+	for {
+		// Priority: drain all completions first, they unblock waiters.
+		select {
+		case m := <-a.completeCh:
 			a.onComplete(m)
+			continue
+		default:
+		}
+
+		select {
+		case m := <-a.completeCh:
+			a.onComplete(m)
+		case m := <-a.acquireCh:
+			a.onAcquire(m)
 		}
 	}
 }
@@ -91,14 +85,14 @@ func (a *InflightActor) Acquire(ctx context.Context, key string) (Role, Ticket, 
 	req := acquireReq{key: key, ch: reply}
 
 	select {
-	case a.inbox <- req:
+	case a.acquireCh <- req:
 	case <-ctx.Done():
 		return 0, Ticket{}, ctx.Err()
 	}
 
 	select {
 	case resp := <-reply:
-		return resp.role, resp.ticket, resp.err
+		return resp.role, resp.ticket, nil
 	case <-ctx.Done():
 		return 0, Ticket{}, ctx.Err()
 	}
@@ -107,7 +101,7 @@ func (a *InflightActor) Acquire(ctx context.Context, key string) (Role, Ticket, 
 func (a *InflightActor) Complete(ctx context.Context, key string, res Response) error {
 	req := completeReq{key: key, res: res}
 	select {
-	case a.inbox <- req:
+	case a.completeCh <- req:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -115,35 +109,26 @@ func (a *InflightActor) Complete(ctx context.Context, key string, res Response) 
 }
 
 func (a *InflightActor) onAcquire(req acquireReq) {
-	// waiter path
-	if entry, ok := a.m[req.key]; ok {
-		entry.waiters++
+	if e, ok := a.m[req.key]; ok {
+		e.waiters++
 		req.ch <- acquireResp{
-			role: Waiter,
-			ticket: Ticket{
-				done: entry.done,
-				res:  &entry.res,
-			},
+			role:   Waiter,
+			ticket: Ticket{done: e.done, res: &e.res},
 		}
 		return
 	}
 
-	// first req, leader path
 	e := &entry{done: make(chan struct{})}
 	a.m[req.key] = e
 	req.ch <- acquireResp{
-		role: Leader,
-		ticket: Ticket{
-			done: e.done,
-			res:  &e.res,
-		},
+		role:   Leader,
+		ticket: Ticket{done: e.done, res: &e.res},
 	}
 }
 
 func (a *InflightActor) onComplete(req completeReq) {
 	e, ok := a.m[req.key]
 	if !ok {
-		// already completed/deleted or not a request
 		return
 	}
 	e.res = req.res
