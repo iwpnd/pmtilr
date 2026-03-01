@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"math"
 	"sort"
 	"sync"
 
@@ -388,14 +389,16 @@ func (r *Repository) readCoalesced(
 		return nil, res.Err
 	}
 
-	tileStart := entry.Offset - span.Entries[0].Offset
+	tileStart := entry.Offset - span.Offset
 	tileEnd := tileStart + entry.Length
+
 	if tileEnd > uint64(len(res.Body)) {
-		return nil, fmt.Errorf("tile offset out of coalescend buffer bounds")
+		// Tile not covered by the coalesced fetch, fall back to direct read
+		return r.readTileBytes(ctx, reader, header.TileDataOffset+entry.Offset, entry.Length)
 	}
 
 	out := make([]byte, entry.Length)
-	copy(out, res.Body[tileStart:tileStart+tileEnd])
+	copy(out, res.Body[tileStart:tileEnd])
 
 	return out, nil
 }
@@ -440,7 +443,7 @@ func (r *Repository) Tile(
 	return nil, fmt.Errorf("maximum directory depth exceeded")
 }
 
-func (r *Repository) ReadTileBytes(ctx context.Context, rr RangeReader, offset, length uint64) ([]byte, error) {
+func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, length uint64) ([]byte, error) {
 	rc, err := rr.ReadRange(ctx, NewRange(offset, length))
 	if err != nil {
 		return nil, err
@@ -499,11 +502,17 @@ func resolveTileSpan(dir Directory, idx, windowSize int) tileSpan {
 		return tileSpan{}
 	}
 
-	first := entries[0]
-	last := entries[len(entries)-1]
+	var minOffset uint64 = math.MaxUint64
+	var maxEnd uint64
 
-	minOffset := first.Offset
-	maxEnd := last.Offset + last.Length
+	for _, e := range entries {
+		if e.Offset < minOffset {
+			minOffset = e.Offset
+		}
+		if end := e.Offset + e.Length; end > maxEnd {
+			maxEnd = end
+		}
+	}
 
 	return tileSpan{
 		Offset:  minOffset,
