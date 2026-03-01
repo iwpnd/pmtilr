@@ -305,6 +305,7 @@ func newDefaultRepository() (*Repository, error) {
 	return &Repository{
 		cache: cache,
 		sg:    singleflight,
+		actor: NewInflightActor(250, 250),
 	}, nil
 }
 
