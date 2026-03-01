@@ -411,7 +411,7 @@ func (r *Repository) Tile(
 			return nil, derr
 		}
 
-		entry, _ := dir.FindTile(tileId)
+		entry, idx := dir.FindTile(tileId)
 		if entry == nil {
 			return nil, nil
 		}
@@ -422,8 +422,8 @@ func (r *Repository) Tile(
 			continue
 		}
 
-		// return r.readCoalesced(ctx, reader, header, dir, entry, idx)
-		return r.readTileBytes(ctx, reader, header.TileDataOffset+entry.Offset, entry.Length)
+		return r.readCoalesced(ctx, reader, header, dir, entry, idx)
+		// return r.readTileBytes(ctx, reader, header.TileDataOffset+entry.Offset, entry.Length)
 	}
 
 	return nil, fmt.Errorf("maximum directory depth exceeded")
@@ -459,7 +459,7 @@ func (r *Repository) Close() {
 	r.cache.Close()
 }
 
-const defaultWindowSize = 8
+const defaultWindowSize = 4
 
 // tileSpan represents a contiguous byte range in the archive covering
 // multiple directory entries.
