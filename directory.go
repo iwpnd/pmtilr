@@ -290,7 +290,7 @@ func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directo
 	dirs := &Repository{
 		cache: cache,
 		sg:    singleflight,
-		actor: NewInflightActor(250, 256),
+		spans: sfx.NewShardedGroup[string, []byte](sfx.WithShardCount(16)),
 	}
 
 	return dirs, nil
@@ -306,14 +306,14 @@ func newDefaultRepository() (*Repository, error) {
 	return &Repository{
 		cache: cache,
 		sg:    singleflight,
-		actor: NewInflightActor(250, 250),
+		spans: sfx.NewShardedGroup[string, []byte](sfx.WithShardCount(16)),
 	}, nil
 }
 
 type Repository struct {
 	cache Cacher
 	sg    sfx.Singleflighter[string, Directory]
-	actor *InflightActor
+	spans sfx.Singleflighter[string, []byte]
 }
 
 func (r *Repository) DirectoryAt(
@@ -361,49 +361,33 @@ func (r *Repository) readCoalesced(
 	idx int,
 ) ([]byte, error) {
 	span := resolveTileSpan(dir, idx, defaultWindowSize)
+	if len(span.Entries) == 0 {
+		return r.readTileBytes(ctx, reader, header.TileDataOffset+entry.Offset, entry.Length)
+	}
+
 	sk := spanKey(span.Offset, span.Length)
 
-	role, ticket, err := r.actor.Acquire(ctx, sk)
+	buf, err, _ := r.spans.Do(sk, func() ([]byte, error) {
+		rc, err := reader.ReadRange(ctx, NewRange(header.TileDataOffset+span.Offset, span.Length))
+		if err != nil {
+			return nil, err
+		}
+		defer rc.Close() //nolint:errcheck
+		return io.ReadAll(rc)
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	if role == Leader {
-		rc, fetchErr := reader.ReadRange(ctx, NewRange(header.TileDataOffset+span.Offset, span.Length))
-		buf := []byte{}
-		if fetchErr == nil {
-			buf, fetchErr = io.ReadAll(rc)
-		}
-		if rc != nil {
-			_ = rc.Close() //nolint:errcheck
-		}
-
-		if cErr := r.actor.Complete(ctx, sk, Response{
-			Body: buf,
-			Err:  fetchErr,
-		}); cErr != nil {
-			return nil, cErr
-		}
-	}
-
-	<-ticket.Done()
-
-	res := ticket.Result()
-	if res.Err != nil {
-		return nil, res.Err
 	}
 
 	tileStart := entry.Offset - span.Offset
 	tileEnd := tileStart + entry.Length
 
-	if tileEnd > uint64(len(res.Body)) {
-		// Tile not covered by the coalesced fetch, fall back to direct read
+	if tileEnd > uint64(len(buf)) {
 		return r.readTileBytes(ctx, reader, header.TileDataOffset+entry.Offset, entry.Length)
 	}
 
 	out := make([]byte, entry.Length)
-	copy(out, res.Body[tileStart:tileEnd])
-
+	copy(out, buf[tileStart:tileEnd])
 	return out, nil
 }
 
@@ -429,13 +413,10 @@ func (r *Repository) Tile(
 
 		entry, idx := dir.FindTile(tileId)
 		if entry == nil {
-			// Not found
 			return nil, nil
 		}
 
-		// is it a directory, then dive deeper
 		if entry.RunLength == 0 {
-			// Dive further
 			dO = header.LeafDirectoryOffset + entry.Offset
 			dS = entry.Length
 			continue
