@@ -355,7 +355,7 @@ func (r *Repository) readCoalesced(
 	entry *Entry,
 	idx int,
 ) ([]byte, error) {
-	span := resolveTileSpan(dir, idx, defaultWindowSize, header.TileDataOffset)
+	span := resolveTileSpan(dir, idx, defaultWindowSize)
 	sk := spanKey(span.Offset, span.Length)
 
 	role, ticket, err := r.actor.Acquire(ctx, sk)
@@ -364,7 +364,7 @@ func (r *Repository) readCoalesced(
 	}
 
 	if role == Leader {
-		rc, fetchErr := reader.ReadRange(ctx, NewRange(span.Offset, span.Length))
+		rc, fetchErr := reader.ReadRange(ctx, NewRange(header.TileDataOffset+span.Offset, span.Length))
 		buf := []byte{}
 		if fetchErr == nil {
 			buf, fetchErr = io.ReadAll(rc)
@@ -388,14 +388,14 @@ func (r *Repository) readCoalesced(
 		return nil, res.Err
 	}
 
-	tileStart := header.TileDataOffset + entry.Offset - span.Offset
+	tileStart := entry.Offset - span.Entries[0].Offset
 	tileEnd := tileStart + entry.Length
 	if tileEnd > uint64(len(res.Body)) {
 		return nil, fmt.Errorf("tile offset out of coalescend buffer bounds")
 	}
 
 	out := make([]byte, entry.Length)
-	copy(out, res.Body[tileStart:tileEnd])
+	copy(out, res.Body[tileStart:tileStart+tileEnd])
 
 	return out, nil
 }
@@ -480,7 +480,7 @@ type tileSpan struct {
 	Entries Entries
 }
 
-func resolveTileSpan(dir Directory, idx, windowSize int, tileDataOffset uint64) tileSpan {
+func resolveTileSpan(dir Directory, idx, windowSize int) tileSpan {
 	half := windowSize / 2
 	start := idx - half
 	start = max(start, 0)
@@ -502,8 +502,8 @@ func resolveTileSpan(dir Directory, idx, windowSize int, tileDataOffset uint64) 
 	first := entries[0]
 	last := entries[len(entries)-1]
 
-	minOffset := tileDataOffset + first.Offset
-	maxEnd := tileDataOffset + last.Offset + last.Length
+	minOffset := first.Offset
+	maxEnd := last.Offset + last.Length
 
 	return tileSpan{
 		Offset:  minOffset,

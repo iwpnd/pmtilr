@@ -57,7 +57,13 @@ type entry struct {
 	waiters int
 }
 
-func NewInflightActor(maxWaiters int, inboxBuffer int) *InflightActor {
+type InflightActor struct {
+	inbox      chan any
+	maxWaiters int
+	m          map[string]*entry
+}
+
+func NewInflightActor(maxWaiters, inboxBuffer int) *InflightActor {
 	a := &InflightActor{
 		inbox:      make(chan any, inboxBuffer),
 		maxWaiters: maxWaiters,
@@ -78,12 +84,6 @@ func (a *InflightActor) run() {
 			a.onComplete(m)
 		}
 	}
-}
-
-type InflightActor struct {
-	inbox      chan any
-	maxWaiters int
-	m          map[string]*entry
 }
 
 func (a *InflightActor) Acquire(ctx context.Context, key string) (Role, Ticket, error) {
