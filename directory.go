@@ -290,7 +290,7 @@ func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directo
 	dirs := &Repository{
 		cache: cache,
 		sg:    singleflight,
-		actor: NewInflightActor(250, 250),
+		actor: NewInflightActor(250, 256),
 	}
 
 	return dirs, nil
@@ -346,6 +346,10 @@ func (r *Repository) DirectoryAt(
 	_ = r.cache.Set(key, dir)
 
 	return dir, nil
+}
+
+func spanKey(offset, length uint64) string {
+	return buildCacheKey("span", offset, length)
 }
 
 func (r *Repository) readCoalesced(
