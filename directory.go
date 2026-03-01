@@ -411,7 +411,7 @@ func (r *Repository) Tile(
 			return nil, derr
 		}
 
-		entry, idx := dir.FindTile(tileId)
+		entry, _ := dir.FindTile(tileId)
 		if entry == nil {
 			return nil, nil
 		}
@@ -422,7 +422,8 @@ func (r *Repository) Tile(
 			continue
 		}
 
-		return r.readCoalesced(ctx, reader, header, dir, entry, idx)
+		// return r.readCoalesced(ctx, reader, header, dir, entry, idx)
+		return r.readTileBytes(ctx, reader, header.TileDataOffset+entry.Offset, entry.Length)
 	}
 
 	return nil, fmt.Errorf("maximum directory depth exceeded")
