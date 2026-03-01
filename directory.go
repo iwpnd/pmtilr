@@ -290,7 +290,7 @@ func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directo
 	dirs := &Repository{
 		cache: cache,
 		sg:    singleflight,
-		spans: sfx.NewShardedGroup[string, []byte](sfx.WithShardCount(16)),
+		spans: sfx.NewShardedGroup[string, []byte](sfx.WithShardCount(3)),
 	}
 
 	return dirs, nil
@@ -306,7 +306,7 @@ func newDefaultRepository() (*Repository, error) {
 	return &Repository{
 		cache: cache,
 		sg:    singleflight,
-		spans: sfx.NewShardedGroup[string, []byte](sfx.WithShardCount(16)),
+		spans: sfx.NewShardedGroup[string, []byte](sfx.WithShardCount(3)),
 	}, nil
 }
 
