@@ -289,6 +289,7 @@ func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directo
 	dirs := &Repository{
 		cache: cache,
 		sg:    singleflight,
+		actor: NewInflightActor(250, 250),
 	}
 
 	return dirs, nil
