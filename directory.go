@@ -240,7 +240,7 @@ func (d *Directory) IterEntries() iter.Seq[Entry] {
 }
 
 // FindTile resolves an Entry by tileID.
-func (d *Directory) FindTile(tileId uint64) *Entry {
+func (d *Directory) FindTile(tileId uint64) (*Entry, int) {
 	// Binary search for the first entry whose tileId > target.
 	i := sort.Search(len(d.entries), func(i int) bool {
 		return d.entries[i].TileID > tileId
@@ -248,7 +248,7 @@ func (d *Directory) FindTile(tileId uint64) *Entry {
 
 	// every entries[j].tileId > tileId so no match.
 	if i == 0 {
-		return nil
+		return nil, -1
 	}
 
 	// all entries at or after i have TileIDs greater than tileId
@@ -257,16 +257,16 @@ func (d *Directory) FindTile(tileId uint64) *Entry {
 
 	// entry is a directory and should be traversed further
 	if e.RunLength == 0 {
-		return e
+		return e, i - 1
 	}
 
 	// Check exact match or run‑length cover:
 	if tileId == e.TileID || tileId < e.TileID+uint64(e.RunLength) {
-		return e
+		return e, i - 1
 	}
 
 	// not found
-	return nil
+	return nil, -1
 }
 
 // deserialize the directory from a decompression reader entry by entry.
@@ -310,6 +310,7 @@ func newDefaultRepository() (*Repository, error) {
 type Repository struct {
 	cache Cacher
 	sg    sfx.Singleflighter[string, Directory]
+	actor *InflightActor
 }
 
 func (r *Repository) DirectoryAt(
@@ -344,6 +345,59 @@ func (r *Repository) DirectoryAt(
 	return dir, nil
 }
 
+func (r *Repository) readCoalesced(
+	ctx context.Context,
+	reader RangeReader,
+	header HeaderV3,
+	dir Directory,
+	entry *Entry,
+	idx int,
+) ([]byte, error) {
+	span := resolveTileSpan(dir, idx, defaultWindowSize, header.TileDataOffset)
+	sk := spanKey(span.Offset, span.Length)
+
+	role, ticket, err := r.actor.Acquire(ctx, sk)
+	if err != nil {
+		return nil, err
+	}
+
+	if role == Leader {
+		rc, fetchErr := reader.ReadRange(ctx, NewRange(span.Offset, span.Length))
+		buf := []byte{}
+		if fetchErr == nil {
+			buf, fetchErr = io.ReadAll(rc)
+		}
+		if rc != nil {
+			_ = rc.Close() //nolint:errcheck
+		}
+
+		if cErr := r.actor.Complete(ctx, sk, Response{
+			Body: buf,
+			Err:  fetchErr,
+		}); cErr != nil {
+			return nil, cErr
+		}
+	}
+
+	<-ticket.Done()
+
+	res := ticket.Result()
+	if res.Err != nil {
+		return nil, res.Err
+	}
+
+	tileStart := header.TileDataOffset + entry.Offset - span.Offset
+	tileEnd := tileStart + entry.Length
+	if tileEnd > uint64(len(res.Body)) {
+		return nil, fmt.Errorf("tile offset out of coalescend buffer bounds")
+	}
+
+	out := make([]byte, entry.Length)
+	copy(out, res.Body[tileStart:tileEnd])
+
+	return out, nil
+}
+
 func (r *Repository) Tile(
 	ctx context.Context,
 	header HeaderV3,
@@ -364,7 +418,7 @@ func (r *Repository) Tile(
 			return nil, derr
 		}
 
-		entry := dir.FindTile(tileId)
+		entry, idx := dir.FindTile(tileId)
 		if entry == nil {
 			// Not found
 			return nil, nil
@@ -378,17 +432,13 @@ func (r *Repository) Tile(
 			continue
 		}
 
-		return r.readTileBytes(
-			ctx,
-			reader,
-			header.TileDataOffset+entry.Offset, entry.Length,
-		)
+		return r.readCoalesced(ctx, reader, header, dir, entry, idx)
 	}
 
 	return nil, fmt.Errorf("maximum directory depth exceeded")
 }
 
-func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, length uint64) ([]byte, error) {
+func (r *Repository) ReadTileBytes(ctx context.Context, rr RangeReader, offset, length uint64) ([]byte, error) {
 	rc, err := rr.ReadRange(ctx, NewRange(offset, length))
 	if err != nil {
 		return nil, err
@@ -416,4 +466,46 @@ func (r *Repository) Flush() {
 
 func (r *Repository) Close() {
 	r.cache.Close()
+}
+
+const defaultWindowSize = 8
+
+// tileSpan represents a contiguous byte range in the archive covering
+// multiple directory entries.
+type tileSpan struct {
+	Offset  uint64
+	Length  uint64
+	Entries Entries
+}
+
+func resolveTileSpan(dir Directory, idx, windowSize int, tileDataOffset uint64) tileSpan {
+	half := windowSize / 2
+	start := idx - half
+	start = max(start, 0)
+	end := idx + half + 1
+	end = min(end, len(dir.entries))
+
+	// only include those that are actually tiles, so runlength > 0
+	entries := Entries{}
+	for _, e := range dir.entries[start:end] {
+		if e.RunLength > 0 {
+			entries = append(entries, e)
+		}
+	}
+
+	if len(entries) == 0 {
+		return tileSpan{}
+	}
+
+	first := entries[0]
+	last := entries[len(entries)-1]
+
+	minOffset := tileDataOffset + first.Offset
+	maxEnd := tileDataOffset + last.Offset + last.Length
+
+	return tileSpan{
+		Offset:  minOffset,
+		Length:  maxEnd - minOffset,
+		Entries: entries,
+	}
 }
