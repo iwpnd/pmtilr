@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/iwpnd/rip"
 )
 
 const (
@@ -116,6 +118,53 @@ func NewRangeReader(ctx context.Context, uri string) (RangeReader, error) {
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 	}
+}
+
+var ErrUpstreamStatus = errors.New("unexpected http status code")
+
+// HTTPRangeReader performs HTTP range requests against a single host
+// using a persistent rip.Client.
+type HTTPRangeReader struct {
+	c *rip.Client
+}
+
+// NewHTTPRangeReader returns an HTTPRangeReader configured for the given host.
+// A default timeout of 200ms is applied; callers may override it or supply
+// additional rip.Options which take precedence over defaults.
+func NewHTTPRangeReader(host string, options ...rip.Option) (*HTTPRangeReader, error) {
+	defaultOpts := []rip.Option{
+		rip.WithTimeout(time.Millisecond * 200),
+	}
+
+	c, err := rip.NewClient(
+		strings.TrimSuffix(host, "/"),
+		append(defaultOpts, options...)...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &HTTPRangeReader{
+		c: c,
+	}, nil
+}
+
+// ReadRange fetches a byte range from the upstream host.
+// The caller is responsible for closing the returned io.ReadCloser.
+//
+// Returns an error if the request fails or the server responds with a
+// non-success status code (> 399).
+func (h *HTTPRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+	req := h.c.NR().SetHeader("Range", bytesRange(ranger.Offset(), ranger.Length()))
+	res, err := req.Execute(ctx, "GET", "")
+	if err != nil {
+		return nil, err
+	}
+	if res.IsError() {
+		return nil, fmt.Errorf("%w: %d", ErrUpstreamStatus, res.StatusCode())
+	}
+
+	return res.RawBody(), nil
 }
 
 // FileRangeReader implements RangeReader by reading from an io.ReaderAt (file).

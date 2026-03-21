@@ -6,14 +6,131 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/iwpnd/pmtilr"
 )
+
+func TestHTTPRangeReader(t *testing.T) {
+	tests := []struct {
+		name          string
+		offset        uint64
+		length        uint64
+		setupFn       func(t *testing.T) *httptest.Server
+		expectedData  string
+		expectedError error
+	}{
+		{
+			name:   "works",
+			offset: 0,
+			length: 4,
+			setupFn: func(t *testing.T) *httptest.Server {
+				t.Helper()
+
+				return httptest.NewServer(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						rangeHeader := r.Header.Get("Range")
+						if rangeHeader != "bytes=0-3" {
+							t.Errorf("unexpected Range header: %s", rangeHeader)
+						}
+						data := []byte("fake tile data")
+
+						w.Header().Set("Content-Range", "bytes 0-3"+"/"+fmt.Sprintf("%d", len(data)))
+						w.Header().Set("Content-Length", "4")
+						w.WriteHeader(http.StatusPartialContent)
+						w.Write(data[0:4])
+					}))
+			},
+			expectedData:  "fake",
+			expectedError: nil,
+		},
+		{
+			name:   "fails for timeout",
+			offset: 0,
+			length: 4,
+			setupFn: func(t *testing.T) *httptest.Server {
+				t.Helper()
+
+				return httptest.NewServer(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						time.Sleep(time.Millisecond * 250)
+					}))
+			},
+			expectedData:  "",
+			expectedError: context.DeadlineExceeded,
+		},
+		{
+			name:   "fails for timeout",
+			offset: 0,
+			length: 4,
+			setupFn: func(t *testing.T) *httptest.Server {
+				t.Helper()
+
+				return httptest.NewServer(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						time.Sleep(time.Millisecond * 250)
+					}))
+			},
+			expectedData:  "",
+			expectedError: context.DeadlineExceeded,
+		},
+		{
+			name:   "fails for status code >399",
+			offset: 0,
+			length: 4,
+			setupFn: func(t *testing.T) *httptest.Server {
+				t.Helper()
+
+				return httptest.NewServer(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusInternalServerError)
+					}))
+			},
+			expectedData:  "",
+			expectedError: pmtilr.ErrUpstreamStatus,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := tt.setupFn(t)
+			defer ts.Close()
+
+			reader, err := pmtilr.NewHTTPRangeReader(ts.URL)
+			if err != nil {
+				t.Fatalf("creating reader should not fail: %s", err)
+			}
+
+			readCloser, err := reader.ReadRange(
+				t.Context(), pmtilr.NewRange(tt.offset, tt.length),
+			)
+			if !errors.Is(err, tt.expectedError) {
+				t.Fatal("expected error, and received error do not match")
+			}
+
+			result := []byte{}
+			if readCloser != nil {
+				defer readCloser.Close()
+				result, _ = io.ReadAll(readCloser)
+			}
+
+			if len(tt.expectedData) != len(result) {
+				t.Fatalf("expected equal length of expected data %d and got data %d", len(tt.expectedData), len(result))
+			}
+
+			if tt.expectedData != string(result) {
+				t.Fatalf("expected %s, got: %s", tt.expectedData, string(result))
+			}
+		})
+	}
+}
 
 func TestFileRangeReader(t *testing.T) {
 	testFileName := "testfile"
@@ -76,7 +193,7 @@ func TestFileRangeReader(t *testing.T) {
 			if !errors.Is(err, tt.expectedError) {
 				t.Fatal("expected error, and received error do not match")
 			}
-			
+
 			result := []byte{}
 			if readCloser != nil {
 				defer readCloser.Close()
@@ -181,7 +298,7 @@ func TestS3RangeReader(t *testing.T) {
 			if !errors.Is(err, tt.expectedError) {
 				t.Fatalf("expected error, and received error do not match")
 			}
-			
+
 			result := []byte{}
 			if readCloser != nil {
 				defer readCloser.Close()
