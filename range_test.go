@@ -103,7 +103,6 @@ func TestHTTPRangeReader(t *testing.T) {
 			ts := tt.setupFn(t)
 			defer ts.Close()
 
-			// reader, err := pmtilr.NewHTTPRangeReader(ts.URL)
 			reader, err := pmtilr.NewRangeReader(t.Context(), ts.URL)
 			if err != nil {
 				t.Fatalf("creating reader should not fail: %s", err)
