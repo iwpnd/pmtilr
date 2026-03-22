@@ -40,6 +40,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/iwpnd/rip v0.7.5 h1:lGwplaxZYgkcdfzszTFRVuF2wTxMmQUazedAT5C8Osg=
 github.com/iwpnd/rip v0.7.5/go.mod h1:LYzzeCgh0xiDWZ/NHSI7wE8yQelRJUfiQ0nmR7qWmUA=
+github.com/iwpnd/rip v0.8.0 h1:J/D5Y+KdJNMBKFidwYzP3Mxj3ioWnGk7gOi0zUUXpMo=
+github.com/iwpnd/rip v0.8.0/go.mod h1:+7xX1vl9N+BJwRj3VKUL/uwRulLIcynhi2d1EF4Egz0=
 github.com/iwpnd/singleflightx v1.0.1 h1:mUGrUSFCZoBRQUZvVMAq8se/ZO4WZ4cE/BYbKRTGYUQ=
 github.com/iwpnd/singleflightx v1.0.1/go.mod h1:+vqvo5wfPzh3XDpXZR7JsO4wLZwO1eFNVYjavAzUgx4=
 github.com/maypok86/otter/v2 v2.3.0 h1:8H8AVVFUSzJwIegKwv1uF5aGitTY+AIrtktg7OcLs8w=
@@ -52,6 +54,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
 golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
+golang.org/x/sync v0.20.0 h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=
+golang.org/x/sync v0.20.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
