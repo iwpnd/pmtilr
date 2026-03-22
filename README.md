@@ -9,7 +9,7 @@ A standalone Go reader for [PMTiles](https://github.com/protomaps/PMTiles) that 
 
 * Fast Hilbert ID resolution for quick tile look‑ups
 * Default [otter/v2](https://maypok86.github.io/otter) in‑memory cache (or bring‑your‑own cache support)
-* Protocol‑agnostic range reader (`file://`, `s3://`, extensible)
+* Protocol‑agnostic range reader (`file://`, `s3://`, `http(s)://` extensible)
 
 
 ## TODO

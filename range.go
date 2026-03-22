@@ -106,6 +106,8 @@ func NewRangeReader(ctx context.Context, uri string) (RangeReader, error) {
 	}
 
 	switch u.Scheme() {
+	case "http", "https":
+		return NewHTTPRangeReader(u.FullPath())
 	case "", "file":
 		return NewFileRangeReader(u.FullPath())
 	case "s3":
