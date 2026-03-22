@@ -107,7 +107,7 @@ func NewRangeReader(ctx context.Context, uri string) (RangeReader, error) {
 
 	switch u.Scheme() {
 	case "http", "https":
-		return NewHTTPRangeReader(u.FullPath())
+		return NewHTTPRangeReader(u.Raw().String())
 	case "", "file":
 		return NewFileRangeReader(u.FullPath())
 	case "s3":
@@ -137,7 +137,6 @@ func NewHTTPRangeReader(host string, options ...rip.Option) (*HTTPRangeReader, e
 	defaultOpts := []rip.Option{
 		rip.WithTimeout(time.Millisecond * 200),
 	}
-
 	c, err := rip.NewClient(
 		strings.TrimSuffix(host, "/"),
 		append(defaultOpts, options...)...,

@@ -13,6 +13,7 @@ const (
 	UnknownScheme Scheme = iota
 	FileScheme
 	S3Scheme
+	HTTPScheme
 )
 
 var _ fmt.Stringer = UnknownScheme
@@ -20,6 +21,7 @@ var _ fmt.Stringer = UnknownScheme
 var schemeStrings = map[Scheme]string{
 	FileScheme:    "file",
 	S3Scheme:      "s3",
+	HTTPScheme:    "http",
 	UnknownScheme: "unknown",
 }
 
@@ -29,6 +31,7 @@ func (s Scheme) String() string {
 
 // URI encapsulates parsed URI components.
 type URI struct {
+	raw      *url.URL
 	host     string
 	path     string
 	fullPath string
@@ -51,9 +54,14 @@ func (u *URI) Scheme() string {
 	return u.scheme.String()
 }
 
+func (u *URI) Raw() *url.URL {
+	return u.raw
+}
+
 func newURI(u *url.URL, scheme Scheme) *URI {
 	p := filepath.FromSlash(filepath.Join(u.Host, u.Path))
 	return &URI{
+		raw:      u,
 		host:     u.Host,
 		path:     u.Path,
 		fullPath: p,
@@ -76,6 +84,8 @@ func ParseURI(raw string) (*URI, error) {
 
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
+	case "http", "https":
+		return newURI(u, HTTPScheme), nil
 	case "", "file":
 		return newURI(u, FileScheme), nil
 	case "s3":
