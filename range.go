@@ -135,7 +135,7 @@ type HTTPRangeReader struct {
 // additional rip.Options which take precedence over defaults.
 func NewHTTPRangeReader(host string, options ...rip.Option) (*HTTPRangeReader, error) {
 	defaultOpts := []rip.Option{
-		rip.WithTimeout(time.Millisecond * 200),
+		rip.WithTimeout(time.Second * 5),
 	}
 	c, err := rip.NewClient(
 		strings.TrimSuffix(host, "/"),
