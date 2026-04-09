@@ -8,13 +8,21 @@ import (
 	"io"
 )
 
+type VectorLayer struct {
+	ID          string         `json:"id"`
+	Fields      map[string]any `json:"fields"`
+	Description string         `json:"description,omitempty"`
+	MinZoom     int            `json:"minzoom,omitempty"`
+	MaxZoom     int            `json:"maxzoom,omitempty"`
+}
+
 type Metadata struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Attribution  string `json:"attribution"`
-	Type         string `json:"type"`
-	Version      string `json:"version"`
-	VectorLayers []any  `json:"vector_layers"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Attribution  string        `json:"attribution"`
+	Type         string        `json:"type"`
+	Version      string        `json:"version"`
+	VectorLayers []VectorLayer `json:"vector_layers"`
 
 	metadataStr string // cache string representation
 }
