@@ -2,6 +2,7 @@ package pmtilr
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -403,11 +404,12 @@ func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, 
 		}
 	}()
 
-	b, err := io.ReadAll(rc)
+	b := new(bytes.Buffer)
+	_, err = io.Copy(b, rc)
 	if err != nil {
 		return nil, fmt.Errorf("reading tile: %w", err)
 	}
-	return b, nil
+	return b.Bytes(), nil
 }
 
 func (r *Repository) Flush() {
