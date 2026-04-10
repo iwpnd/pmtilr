@@ -59,7 +59,18 @@ func main() {
 
 ## Benchmark
 
-tbc
+Comparison against [go-pmtiles](https://github.com/protomaps/go-pmtiles) serving the same PMTiles archive from local MinIO. Both servers are pinned to 2 cores (`taskset -c 0,1`), loaded with 50 concurrent users via [k6](https://k6.io/) for 15 minutes from a fixed set of tile URLs across mixed zoom levels with a consistent ~19% 404 rate.
+
+| Metric | go-pmtiles | pmtilr | Delta |
+| --- | --- | --- | --- |
+| Requests/s | 6,249 | 8,622 | **+38.0%** |
+| Avg latency | 7.93 ms | 5.72 ms | **-27.9%** |
+| Median latency | 1.46 ms | 1.09 ms | **-25.3%** |
+| P90 latency | 8.00 ms | 4.35 ms | **-45.6%** |
+| P95 latency | 10.35 ms | 6.27 ms | **-39.4%** |
+| Data throughput | 130 MB/s | 180 MB/s | **+38.5%** |
+
+Tested on an Intel i7-14700KF running Linux (amd64).
 
 ## License
 
