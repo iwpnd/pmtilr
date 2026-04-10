@@ -3,7 +3,7 @@ module github.com/iwpnd/pmtilr
 go 1.25.5
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.41.4
+	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.12
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.1
 	github.com/iwpnd/rip v0.8.0
