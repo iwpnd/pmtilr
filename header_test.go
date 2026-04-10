@@ -105,4 +105,7 @@ func TestHeaderString(t *testing.T) {
 	if !strings.Contains(out, `"mvt"`) {
 		t.Errorf("expected TileType to be marshaled as string, got %s", out)
 	}
+	if ct, ok := h.TileType.ToContentType(); !ok {
+		t.Errorf("expected TileType Content-Type to exist, got %s", ct)
+	}
 }
