@@ -1,7 +1,6 @@
 .PHONY: test
 test:
 	@echo "run tests"
-	# @go test -v -json ./... | tparse -all
 	@go test $(go list ./... | grep -v /cmd/) -v -json | tparse -all
 
 .PHONY: lint

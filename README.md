@@ -12,10 +12,6 @@ A standalone Go reader for [PMTiles](https://github.com/protomaps/PMTiles) that 
 * Protocol‑agnostic range reader (`file://`, `s3://`, `http(s)://` extensible)
 
 
-## TODO
-
-* add [blob](https://gocloud.dev/howto/blob/#using)
-
 ## Installation
 
 ```bash
