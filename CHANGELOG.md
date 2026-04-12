@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/iwpnd/pmtilr/compare/v1.0.1...v1.0.2) (2026-04-12)
+
+### 🐛 Bug Fixes
+
+* 🐛 add tilejson method on source to build valid tilejson from meta and header ([aa0ff54](https://github.com/iwpnd/pmtilr/commit/aa0ff54fa0b7bef381a299a3945778e61051415f))
+
 ## [1.0.1](https://github.com/iwpnd/pmtilr/compare/v1.0.0...v1.0.1) (2026-04-11)
 
 ### 🧹 Miscellaneous
