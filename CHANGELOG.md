@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/iwpnd/pmtilr/compare/v1.0.2...v1.0.3) (2026-04-12)
+
+### 🐛 Bug Fixes
+
+* 🐛 .Ext() on tilejson endpoint ([0cbd64e](https://github.com/iwpnd/pmtilr/commit/0cbd64ed3ae6acf73fa2a1400d3eb6d4fad9de1a))
+
 ## [1.0.2](https://github.com/iwpnd/pmtilr/compare/v1.0.1...v1.0.2) (2026-04-12)
 
 ### 🐛 Bug Fixes
