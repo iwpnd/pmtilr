@@ -141,7 +141,7 @@ type TileJSON struct {
 // else return TileJSON v2.
 func (s *Source) TileJSON(host string) TileJSON {
 	tileURL := fmt.Sprintf(
-		"%s/{z}/{x}/{y}.%s",
+		"%s/{z}/{x}/{y}%s",
 		host, s.Header().TileType.Ext(),
 	)
 
