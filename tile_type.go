@@ -61,3 +61,7 @@ func (t TileType) ToContentType() (string, bool) {
 		return "", false
 	}
 }
+
+func (t TileType) IsVector() bool {
+	return t == TileTypeMVT || t == TileTypeMLT
+}

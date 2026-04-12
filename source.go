@@ -125,3 +125,41 @@ func (s *Source) Meta() Metadata {
 func (s *Source) Close() {
 	s.repository.Close()
 }
+
+type TileJSON struct {
+	TileJSON     string        `json:"tilejson"`
+	Name         string        `json:"name,omitempty"`
+	Description  string        `json:"description,omitempty"`
+	Attribution  string        `json:"attribution,omitempty"`
+	Scheme       string        `json:"scheme"`
+	Tiles        []string      `json:"tiles"`
+	VectorLayers []VectorLayer `json:"vector_layers,omitempty"`
+}
+
+// TileJSON produces a TileJSON document from the archive metadata.
+// For MVT and MLT tile types TileJSON v3 (with vector_layers);
+// else return TileJSON v2.
+func (s *Source) TileJSON(host string) TileJSON {
+	tileURL := fmt.Sprintf(
+		"%s/{z}/{x}/{y}.%s",
+		host, s.Header().TileType.Ext(),
+	)
+
+	m := s.Meta()
+	tj := TileJSON{
+		Name:        m.Name,
+		Description: m.Description,
+		Attribution: m.Attribution,
+		Scheme:      "xyz",
+		Tiles:       []string{tileURL},
+	}
+
+	if s.Header().TileType.IsVector() {
+		tj.TileJSON = "3.0.0"
+		tj.VectorLayers = m.VectorLayers
+	} else {
+		tj.TileJSON = "2.2.0"
+	}
+
+	return tj
+}
