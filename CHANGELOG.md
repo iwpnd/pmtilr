@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/iwpnd/pmtilr/compare/v1.1.0...v1.1.1) (2026-04-27)
+
+### 🧹 Miscellaneous
+
+* **deps:** bump github.com/aws/aws-sdk-go-v2/config ([#85](https://github.com/iwpnd/pmtilr/issues/85)) ([0ea9ea6](https://github.com/iwpnd/pmtilr/commit/0ea9ea6c5a51fc70c3541432f141e759db8a7290))
+
 ## [1.1.0](https://github.com/iwpnd/pmtilr/compare/v1.0.3...v1.1.0) (2026-04-27)
 
 ### ✨ Features
