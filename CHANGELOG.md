@@ -1,3 +1,14 @@
+## [1.1.0](https://github.com/iwpnd/pmtilr/compare/v1.0.3...v1.1.0) (2026-04-27)
+
+### ✨ Features
+
+* ✨ revert require go1.26.2 ([f161402](https://github.com/iwpnd/pmtilr/commit/f161402f4e16d20718916d1752a49986dbe888f8))
+
+### 🧹 Miscellaneous
+
+* 🔧 explicit copy err ([28bb33e](https://github.com/iwpnd/pmtilr/commit/28bb33eef8a2e10b58287543000c4e996cf55c5d))
+* **deps:** bump github.com/aws/aws-sdk-go-v2/service/s3 ([#86](https://github.com/iwpnd/pmtilr/issues/86)) ([4746e4f](https://github.com/iwpnd/pmtilr/commit/4746e4f9b510dcc1071dc2afaebfcc674059e867))
+
 ## [1.0.3](https://github.com/iwpnd/pmtilr/compare/v1.0.2...v1.0.3) (2026-04-12)
 
 ### 🐛 Bug Fixes
