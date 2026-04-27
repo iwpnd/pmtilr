@@ -405,9 +405,9 @@ func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, 
 	}()
 
 	b := bytes.NewBuffer(make([]byte, 0, length))
-	_, err = io.Copy(b, rc)
-	if err != nil {
-		return nil, fmt.Errorf("reading tile: %w", err)
+	_, cErr := io.Copy(b, rc)
+	if cErr != nil {
+		return nil, fmt.Errorf("reading tile: %w", cErr)
 	}
 	return b.Bytes(), nil
 }
