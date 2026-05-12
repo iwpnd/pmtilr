@@ -4,8 +4,14 @@ updates:
     directory: /
     commit-message:
       prefix: "chore(deps): "
+    groups:
+      aws:
+        patterns:
+          - "github.com/aws/aws-sdk-go-v2/*"
+        update-types:
+          - minor
     schedule:
-      interval: weekly
+      interval: monthly
 
   - package-ecosystem: github-actions
     directory: /
