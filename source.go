@@ -101,9 +101,6 @@ type TileSource struct {
 	meta       *Metadata      // Metadata for tile index and offsets
 	repository Repository     // Repository for actual tile reads
 	decompress DecompressFunc // Function handling decompression on the archive
-
-	tracer trace.Tracer
-	meter  metric.Meter
 }
 
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
@@ -133,9 +130,6 @@ func NewSource( //nolint:cyclop
 
 	tracer := cfg.tracerProvider.Tracer(instrumentationName)
 	meter := cfg.meterProvider.Meter(instrumentationName)
-
-	s.tracer = tracer
-	s.meter = meter
 
 	if cfg.cacher == nil {
 		cache, err := NewOtterCache()
