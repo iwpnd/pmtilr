@@ -314,14 +314,14 @@ func (r *Repository) DirectoryAt(
 	decompress DecompressFunc,
 ) (Directory, error) {
 	key := buildCacheKey(header.Etag, ranger.Offset(), ranger.Length())
-	dir, ok := r.cache.Get(key)
+	dir, ok := r.cache.Get(ctx, key)
 	if ok {
 		return dir, nil
 	}
 
 	dir, err, _ := r.sg.Do(key, func() (Directory, error) {
 		// let's first see if the value is already cached in the mean time.
-		dir, ok := r.cache.Get(key)
+		dir, ok := r.cache.Get(ctx, key)
 		if ok {
 			return dir, nil
 		}
@@ -333,7 +333,7 @@ func (r *Repository) DirectoryAt(
 	}
 	dir.key = key
 
-	_ = r.cache.Set(key, dir)
+	_ = r.cache.Set(ctx, key, dir)
 
 	return dir, nil
 }

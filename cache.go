@@ -1,14 +1,15 @@
 package pmtilr
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/maypok86/otter/v2"
 )
 
 type Cacher interface {
-	Get(key string) (Directory, bool)
-	Set(key string, value Directory) bool
+	Get(ctx context.Context, key string) (Directory, bool)
+	Set(ctx context.Context, key string, value Directory) bool
 	Close()
 	Clear()
 }
@@ -48,11 +49,11 @@ type OtterCache struct {
 	cache *otter.Cache[string, Directory]
 }
 
-func (oc *OtterCache) Get(key string) (Directory, bool) {
+func (oc *OtterCache) Get(_ context.Context, key string) (Directory, bool) {
 	return oc.cache.GetIfPresent(key)
 }
 
-func (oc *OtterCache) Set(key string, value Directory) bool {
+func (oc *OtterCache) Set(_ context.Context, key string, value Directory) bool {
 	_, ok := oc.cache.Set(key, value)
 
 	return ok

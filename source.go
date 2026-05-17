@@ -142,7 +142,11 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 	sg := singleflight.NewShardedGroup[string, Directory](
 		singleflight.WithShardCount(cfg.sfxshards),
 	)
-	repository, err := NewRepository(cfg.cacher, sg)
+	icache, err := newInstrumentedCacher(cfg.cacher, tracer, meter)
+	if err != nil {
+		return nil, fmt.Errorf("creating source: %w", err)
+	}
+	repository, err := NewRepository(icache, sg)
 	if err != nil {
 		return nil, err
 	}

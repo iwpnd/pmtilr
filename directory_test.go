@@ -201,7 +201,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 			}
 
 			if !tc.expectError && !tc.expectFromCache {
-				cached, ok := repo.cache.Get(key)
+				cached, ok := repo.cache.Get(ctx, key)
 				if !ok || cached.Key() != dir.Key() {
 					t.Errorf("expected directory to be cached under key %s", key)
 				}
