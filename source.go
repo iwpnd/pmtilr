@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	singleflight "github.com/iwpnd/singleflightx"
 )
 
 // keyBufPool provides a shared buffer pool with 64-byte pre-allocated buffers
@@ -14,27 +16,41 @@ var keyBufPool = sync.Pool{
 	},
 }
 
+type sourceConfig struct {
+	reader     RangeReader
+	cacher     Cacher
+	decompress DecompressFunc
+	sfxshards  uint64
+}
+
 // SourceOption is a functional option for configuring a Source.
-type SourceOption = func(source *Source)
+type SourceOption = func(source *sourceConfig)
 
 // WithDecompressFunc sets a custom decompression function on the Source.
 func WithDecompressFunc(decompressFn DecompressFunc) SourceOption {
-	return func(source *Source) {
-		source.decompress = decompressFn
+	return func(config *sourceConfig) {
+		config.decompress = decompressFn
 	}
 }
 
-// WithRepository sets a custom Repository on the Source.
-func WithRepository(repository *Repository) SourceOption {
-	return func(source *Source) {
-		source.repository = repository
+// WithCacher sets a custom in directory cache on the Source.
+func WithCacher(cacher Cacher) SourceOption {
+	return func(config *sourceConfig) {
+		config.cacher = cacher
 	}
 }
 
 // WithRangeReader sets a custom RangeReader on the Source.
 func WithRangeReader(reader RangeReader) SourceOption {
-	return func(source *Source) {
-		source.reader = reader
+	return func(config *sourceConfig) {
+		config.reader = reader
+	}
+}
+
+// WithSingleFlightShardCount change the number of singleflight shards from default 3.
+func WithSingleFlightShardCount(shards uint64) SourceOption {
+	return func(config *sourceConfig) {
+		config.sfxshards = shards
 	}
 }
 
@@ -58,11 +74,26 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 		meta:   &Metadata{},
 	}
 
+	cfg := &sourceConfig{}
+
 	// apply user options
 	for _, optFn := range options {
-		optFn(s)
+		optFn(cfg)
 	}
 
+	if cfg.cacher == nil {
+		cache, err := NewOtterCache()
+		if err != nil {
+			return nil, err
+		}
+		cfg.cacher = cache
+	}
+
+	if cfg.sfxshards == 0 {
+		cfg.sfxshards = defaultSfxShardCount
+	}
+
+	s.reader = cfg.reader
 	// Initialize default reader unless configured.
 	if s.reader == nil {
 		reader, err := NewRangeReader(ctx, uri)
@@ -72,15 +103,16 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 		s.reader = reader
 	}
 
-	// Initialize default repository unless configured.
-	if s.repository == nil {
-		repository, err := newDefaultRepository()
-		if err != nil {
-			return nil, err
-		}
-		s.repository = repository
+	sg := singleflight.NewShardedGroup[string, Directory](
+		singleflight.WithShardCount(cfg.sfxshards),
+	)
+	repository, err := NewRepository(cfg.cacher, sg)
+	if err != nil {
+		return nil, err
 	}
+	s.repository = repository
 
+	s.decompress = cfg.decompress
 	// Initialize default decompress function unless configured.
 	if s.decompress == nil {
 		s.decompress = Decompress

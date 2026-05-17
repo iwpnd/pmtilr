@@ -15,7 +15,10 @@ import (
 	sfx "github.com/iwpnd/singleflightx"
 )
 
-const directoryMaxDepth = 3
+const (
+	directoryMaxDepth    uint64 = 3
+	defaultSfxShardCount uint64 = directoryMaxDepth
+)
 
 var readerPool = sync.Pool{
 	New: func() any {
@@ -286,26 +289,16 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 	return err
 }
 
-func NewRepository(cache Cacher, singleflight sfx.Singleflighter[string, Directory]) (*Repository, error) {
+func NewRepository(
+	cache Cacher,
+	singleflight sfx.Singleflighter[string, Directory],
+) (*Repository, error) {
 	dirs := &Repository{
 		cache: cache,
 		sg:    singleflight,
 	}
 
 	return dirs, nil
-}
-
-func newDefaultRepository() (*Repository, error) {
-	cache, err := NewOtterCache()
-	if err != nil {
-		return nil, err
-	}
-
-	singleflight := sfx.NewShardedGroup[string, Directory](sfx.WithShardCount(3))
-	return &Repository{
-		cache: cache,
-		sg:    singleflight,
-	}, nil
 }
 
 type Repository struct {
@@ -389,7 +382,11 @@ func (r *Repository) Tile(
 	return nil, fmt.Errorf("maximum directory depth exceeded")
 }
 
-func (r *Repository) readTileBytes(ctx context.Context, rr RangeReader, offset, length uint64) ([]byte, error) {
+func (r *Repository) readTileBytes(
+	ctx context.Context,
+	rr RangeReader,
+	offset, length uint64,
+) ([]byte, error) {
 	rc, err := rr.ReadRange(ctx, NewRange(offset, length))
 	if err != nil {
 		return nil, err

@@ -12,6 +12,8 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+
+	singleflight "github.com/iwpnd/singleflightx"
 )
 
 func writeUvarint(buf *bytes.Buffer, val uint64) {
@@ -174,8 +176,13 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 		},
 	}
 
+	sfx := singleflight.NewShardedGroup[string, Directory](singleflight.WithShardCount(3))
+	cache, err := NewOtterCache()
+	if err != nil {
+		t.Fatalf("instantiating cache")
+	}
 	ctx := t.Context()
-	repo, err := newDefaultRepository()
+	repo, err := NewRepository(cache, sfx)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
