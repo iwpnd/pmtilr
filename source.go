@@ -6,6 +6,13 @@ import (
 	"sync"
 
 	singleflight "github.com/iwpnd/singleflightx"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	instrumentationName = "github.com/iwpnd/pmtilr"
 )
 
 // keyBufPool provides a shared buffer pool with 64-byte pre-allocated buffers
@@ -21,6 +28,9 @@ type sourceConfig struct {
 	cacher     Cacher
 	decompress DecompressFunc
 	sfxshards  uint64
+
+	tracerProvider trace.TracerProvider
+	meterProvider  metric.MeterProvider
 }
 
 // SourceOption is a functional option for configuring a Source.
@@ -54,6 +64,20 @@ func WithSingleFlightShardCount(shards uint64) SourceOption {
 	}
 }
 
+// WithTracerProvider to pass a custom tracer provider.
+func WithTracerProvider(provider trace.TracerProvider) SourceOption {
+	return func(config *sourceConfig) {
+		config.tracerProvider = provider
+	}
+}
+
+// WithMeterProvider to pass a custom meter provider.
+func WithMeterProvider(provider metric.MeterProvider) SourceOption {
+	return func(config *sourceConfig) {
+		config.meterProvider = provider
+	}
+}
+
 // Source provides read access to protomap tiles, supporting concurrent
 // loads with singleflight deduplication.
 type Source struct {
@@ -62,6 +86,9 @@ type Source struct {
 	meta       *Metadata      // Metadata for tile index and offsets
 	repository *Repository    // Repository for actual tile reads
 	decompress DecompressFunc // Function handling decompression on the archive
+
+	tracer trace.Tracer
+	meter  metric.Meter
 }
 
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
@@ -74,12 +101,21 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 		meta:   &Metadata{},
 	}
 
-	cfg := &sourceConfig{}
+	cfg := &sourceConfig{
+		tracerProvider: otel.GetTracerProvider(),
+		meterProvider:  otel.GetMeterProvider(),
+	}
 
 	// apply user options
 	for _, optFn := range options {
 		optFn(cfg)
 	}
+
+	tracer := cfg.tracerProvider.Tracer(instrumentationName)
+	meter := cfg.meterProvider.Meter(instrumentationName)
+
+	s.tracer = tracer
+	s.meter = meter
 
 	if cfg.cacher == nil {
 		cache, err := NewOtterCache()
