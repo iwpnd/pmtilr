@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/iwpnd/pmtilr/compare/v1.2.0...v1.3.0) (2026-05-17)
+
+### ✨ Features
+
+* ✨ instrument source, fix decoration of instrumented repository ([fb1c8fe](https://github.com/iwpnd/pmtilr/commit/fb1c8feae1a99289eb23c802d2c3e33b619972a4))
+
 ## [1.2.0](https://github.com/iwpnd/pmtilr/compare/v1.1.3...v1.2.0) (2026-05-17)
 
 ### ✨ Features
