@@ -1,3 +1,19 @@
+## [1.2.0](https://github.com/iwpnd/pmtilr/compare/v1.1.3...v1.2.0) (2026-05-17)
+
+### ✨ Features
+
+* ✨ separate source and source configuration ([a3184b1](https://github.com/iwpnd/pmtilr/commit/a3184b1b27838a5d9d3e5f9a5fd6bceb9852c6cd))
+
+### 🐛 Bug Fixes
+
+* 🐛 instrument repository and cacher on demand ([de5dd81](https://github.com/iwpnd/pmtilr/commit/de5dd81734c2f32eb78026b6aa298567313071b5))
+* 🐛 minor refactoring ([d041ab5](https://github.com/iwpnd/pmtilr/commit/d041ab578659a7021a2825538b3f1b88149c46d7))
+
+### 🧹 Miscellaneous
+
+* 🔧 add tracer and meter provider to source ([0d5dc42](https://github.com/iwpnd/pmtilr/commit/0d5dc42a9aeaa3c04a1402304e6c53bd66ae102e))
+* 🔧 instrument cacher ([57b9708](https://github.com/iwpnd/pmtilr/commit/57b9708a7df920fd6f0320761216d2c5643f5489))
+
 ## [1.1.3](https://github.com/iwpnd/pmtilr/compare/v1.1.2...v1.1.3) (2026-05-10)
 
 ### 🧹 Miscellaneous
