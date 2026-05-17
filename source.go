@@ -81,11 +81,11 @@ func WithMeterProvider(provider metric.MeterProvider) SourceOption {
 // Source provides read access to protomap tiles, supporting concurrent
 // loads with singleflight deduplication.
 type Source struct {
-	reader     RangeReader    // Underlying reader for HTTP range requests
-	header     *HeaderV3      // Parsed header containing tile layout and ETag
-	meta       *Metadata      // Metadata for tile index and offsets
-	repository *Repository    // Repository for actual tile reads
-	decompress DecompressFunc // Function handling decompression on the archive
+	reader     RangeReader          // Underlying reader for HTTP range requests
+	header     *HeaderV3            // Parsed header containing tile layout and ETag
+	meta       *Metadata            // Metadata for tile index and offsets
+	repository *DirectoryRepository // Repository for actual tile reads
+	decompress DecompressFunc       // Function handling decompression on the archive
 
 	tracer trace.Tracer
 	meter  metric.Meter
@@ -146,7 +146,7 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 	if err != nil {
 		return nil, fmt.Errorf("creating source: %w", err)
 	}
-	repository, err := NewRepository(icache, sg)
+	repository, err := NewDirectoryRepository(icache, sg)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,17 @@ func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
 			s.header.MaxZoom,
 		)
 	}
-	return s.repository.Tile(ctx, s.Header(), s.reader, s.decompress, z, x, y)
+
+	entry, err := s.repository.TileEntry(ctx, s.Header(), s.reader, s.decompress, z, x, y)
+	if err != nil {
+		return nil, err
+	}
+
+	return entry.ReadTileBytes(
+		ctx,
+		s.reader,
+		s.header.TileDataOffset,
+	)
 }
 
 // Header returns a copy of the current header.

@@ -105,21 +105,21 @@ func NewRangeReader(ctx context.Context, uri string) (RangeReader, error) {
 		return nil, fmt.Errorf("parsing URI %q: %w", uri, err)
 	}
 
-	switch u.Scheme() {
-	case "http", "https":
+	switch u.Scheme() { //nolint:exhaustive
+	case SchemeHTTP, SchemeHTTPS:
 		return NewHTTPRangeReader(u.Raw().String())
-	case "", "file":
+	case SchemeFileCwd, SchemeFile:
 		return NewFileRangeReader(u.FullPath())
-	case "s3":
+	case SchemeS3:
 		client, err := createS3Client(ctx)
 		if err != nil {
 			return nil, err
 		}
 		bucket, key := u.Host(), u.Path()
 		return NewS3RangeReader(bucket, strings.TrimPrefix(key, "/"), client)
-	default:
-		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 	}
+
+	return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme())
 }
 
 var ErrUpstreamStatus = errors.New("unexpected http status code")

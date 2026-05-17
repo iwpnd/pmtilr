@@ -182,7 +182,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 		t.Fatalf("instantiating cache")
 	}
 	ctx := t.Context()
-	repo, err := NewRepository(cache, sfx)
+	repo, err := NewDirectoryRepository(cache, sfx)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}

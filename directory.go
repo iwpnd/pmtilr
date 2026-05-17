@@ -48,6 +48,38 @@ type Entry struct {
 	RunLength uint32 `json:"run_length"`
 }
 
+func (e *Entry) ReadTileBytes(
+	ctx context.Context,
+	rr RangeReader,
+	tileDataOffset uint64,
+) ([]byte, error) {
+	offset := tileDataOffset + e.Offset
+	rc, err := rr.ReadRange(ctx, NewRange(offset, e.Length))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if cerr := rc.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("closing tile reader: %w", cerr)
+			} else {
+				err = errors.Join(err, fmt.Errorf("closing tile reader: %w", cerr))
+			}
+		}
+	}()
+
+	b := bytes.NewBuffer(make([]byte, 0, e.Length))
+	_, cErr := io.Copy(b, rc)
+	if cErr != nil {
+		return nil, fmt.Errorf("reading tile: %w", cErr)
+	}
+	return b.Bytes(), nil
+}
+
+func (e *Entry) IsDirectory() bool {
+	return e.RunLength == 0
+}
+
 // Entries represents a slice of Entry values.
 // It provides methods to deserialize entry attributes in order.
 type Entries []Entry
@@ -243,8 +275,8 @@ func (d *Directory) IterEntries() iter.Seq[Entry] {
 	}
 }
 
-// FindTile resolves an Entry by tileID.
-func (d *Directory) FindTile(tileId uint64) *Entry {
+// FindEntry resolves an Entry by tileID.
+func (d *Directory) FindEntry(tileId uint64) *Entry {
 	// Binary search for the first entry whose tileId > target.
 	i := sort.Search(len(d.entries), func(i int) bool {
 		return d.entries[i].TileID > tileId
@@ -289,11 +321,29 @@ func (d *Directory) deserialize(r io.Reader) (err error) {
 	return err
 }
 
-func NewRepository(
+type Repository interface {
+	Close()
+	DirectoryAt(
+		ctx context.Context,
+		header HeaderV3,
+		reader RangeReader,
+		ranger Ranger,
+		decompress DecompressFunc,
+	) (Directory, error)
+	TileEntry(
+		ctx context.Context,
+		header HeaderV3,
+		reader RangeReader,
+		decompress DecompressFunc,
+		z, x, y uint64,
+	) (*Entry, error)
+}
+
+func NewDirectoryRepository(
 	cache Cacher,
 	singleflight sfx.Singleflighter[string, Directory],
-) (*Repository, error) {
-	dirs := &Repository{
+) (*DirectoryRepository, error) {
+	dirs := &DirectoryRepository{
 		cache: cache,
 		sg:    singleflight,
 	}
@@ -301,12 +351,12 @@ func NewRepository(
 	return dirs, nil
 }
 
-type Repository struct {
+type DirectoryRepository struct {
 	cache Cacher
 	sg    sfx.Singleflighter[string, Directory]
 }
 
-func (r *Repository) DirectoryAt(
+func (r *DirectoryRepository) DirectoryAt(
 	ctx context.Context,
 	header HeaderV3,
 	reader RangeReader,
@@ -329,7 +379,7 @@ func (r *Repository) DirectoryAt(
 		return NewDirectory(ctx, header, reader, ranger, decompress)
 	})
 	if err != nil {
-		return Directory{}, err
+		return Directory{}, fmt.Errorf("resolving directory: %w", err)
 	}
 	dir.key = key
 
@@ -338,12 +388,12 @@ func (r *Repository) DirectoryAt(
 	return dir, nil
 }
 
-func (r *Repository) Tile(
+func (r *DirectoryRepository) TileEntry(
 	ctx context.Context,
 	header HeaderV3,
 	reader RangeReader,
 	decompress DecompressFunc, z, x, y uint64,
-) ([]byte, error) {
+) (*Entry, error) {
 	tileId, err := FastZXYToHilbertTileID(z, x, y)
 	if err != nil {
 		return nil, fmt.Errorf("resolving hilbert tile id from z:%d x:%d y:%d", z, x, y)
@@ -358,61 +408,30 @@ func (r *Repository) Tile(
 			return nil, derr
 		}
 
-		entry := dir.FindTile(tileId)
+		entry := dir.FindEntry(tileId)
 		if entry == nil {
 			// Not found
-			return nil, nil
+			return nil, ErrTileNotFound
 		}
 
 		// is it a directory, then dive deeper
-		if entry.RunLength == 0 {
+		if entry.IsDirectory() {
 			// Dive further
 			dO = header.LeafDirectoryOffset + entry.Offset
 			dS = entry.Length
 			continue
 		}
 
-		return r.readTileBytes(
-			ctx,
-			reader,
-			header.TileDataOffset+entry.Offset, entry.Length,
-		)
+		return entry, nil
 	}
 
 	return nil, fmt.Errorf("maximum directory depth exceeded")
 }
 
-func (r *Repository) readTileBytes(
-	ctx context.Context,
-	rr RangeReader,
-	offset, length uint64,
-) ([]byte, error) {
-	rc, err := rr.ReadRange(ctx, NewRange(offset, length))
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if cerr := rc.Close(); cerr != nil {
-			if err == nil {
-				err = fmt.Errorf("closing tile reader: %w", cerr)
-			} else {
-				err = errors.Join(err, fmt.Errorf("closing tile reader: %w", cerr))
-			}
-		}
-	}()
-
-	b := bytes.NewBuffer(make([]byte, 0, length))
-	_, cErr := io.Copy(b, rc)
-	if cErr != nil {
-		return nil, fmt.Errorf("reading tile: %w", cErr)
-	}
-	return b.Bytes(), nil
-}
-
-func (r *Repository) Flush() {
+func (r *DirectoryRepository) Flush() {
 	r.cache.Clear()
 }
 
-func (r *Repository) Close() {
+func (r *DirectoryRepository) Close() {
 	r.cache.Close()
 }

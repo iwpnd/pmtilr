@@ -10,19 +10,23 @@ import (
 type Scheme uint8
 
 const (
-	UnknownScheme Scheme = iota
-	FileScheme
-	S3Scheme
-	HTTPScheme
+	SchemeUnknown Scheme = iota
+	SchemeFile
+	SchemeS3
+	SchemeHTTP
+	SchemeHTTPS
+	SchemeFileCwd
 )
 
-var _ fmt.Stringer = UnknownScheme
+var _ fmt.Stringer = SchemeUnknown
 
 var schemeStrings = map[Scheme]string{
-	FileScheme:    "file",
-	S3Scheme:      "s3",
-	HTTPScheme:    "http",
-	UnknownScheme: "unknown",
+	SchemeFile:    "file",
+	SchemeS3:      "s3",
+	SchemeHTTP:    "http",
+	SchemeHTTPS:   "https",
+	SchemeUnknown: "unknown",
+	SchemeFileCwd: "",
 }
 
 func (s Scheme) String() string {
@@ -50,8 +54,8 @@ func (u *URI) FullPath() string {
 	return u.fullPath
 }
 
-func (u *URI) Scheme() string {
-	return u.scheme.String()
+func (u *URI) Scheme() Scheme {
+	return u.scheme
 }
 
 func (u *URI) Raw() *url.URL {
@@ -73,8 +77,8 @@ func newURI(u *url.URL, scheme Scheme) *URI {
 func ParseURI(raw string) (*URI, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		// empty input -> treat as file at cwd
-		return newURI(&url.URL{Path: "."}, FileScheme), nil
+		// empty input / SchemeFileCwd -> treat as file at cwd
+		return newURI(&url.URL{Path: "."}, SchemeFile), nil
 	}
 
 	u, err := url.Parse(raw)
@@ -84,12 +88,12 @@ func ParseURI(raw string) (*URI, error) {
 
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
-	case "http", "https":
-		return newURI(u, HTTPScheme), nil
-	case "", "file":
-		return newURI(u, FileScheme), nil
-	case "s3":
-		return newURI(u, S3Scheme), nil
+	case SchemeHTTP.String(), SchemeHTTPS.String():
+		return newURI(u, SchemeHTTP), nil
+	case SchemeFileCwd.String(), SchemeFile.String():
+		return newURI(u, SchemeFile), nil
+	case SchemeS3.String():
+		return newURI(u, SchemeS3), nil
 	default:
 		return nil, fmt.Errorf("unsupported URI scheme %q", u.Scheme)
 	}

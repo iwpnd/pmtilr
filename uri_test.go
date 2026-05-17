@@ -13,9 +13,9 @@ func TestSchemeString(t *testing.T) {
 		s        Scheme
 		expected string
 	}{
-		{name: "file scheme", s: FileScheme, expected: "file"},
-		{name: "s3 scheme", s: S3Scheme, expected: "s3"},
-		{name: "unknown scheme", s: UnknownScheme, expected: "unknown"},
+		{name: "file scheme", s: SchemeFile, expected: "file"},
+		{name: "s3 scheme", s: SchemeS3, expected: "s3"},
+		{name: "unknown scheme", s: SchemeUnknown, expected: "unknown"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -35,7 +35,7 @@ func TestParseURI(t *testing.T) {
 		expectedHost      string
 		expectedPath      string
 		expectedFullPath  string
-		expectedScheme    string
+		expectedScheme    Scheme
 		expectErr         bool
 		expectErrContains string
 	}{
@@ -45,7 +45,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "",
 			expectedPath:     ".",
 			expectedFullPath: ".",
-			expectedScheme:   "file",
+			expectedScheme:   SchemeFile,
 			expectErr:        false,
 		},
 		{
@@ -54,7 +54,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "",
 			expectedPath:     "/home/user/data.csv",
 			expectedFullPath: "/home/user/data.csv",
-			expectedScheme:   "file",
+			expectedScheme:   SchemeFile,
 			expectErr:        false,
 		},
 		{
@@ -63,7 +63,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "",
 			expectedPath:     "./home/user/data.csv",
 			expectedFullPath: "home/user/data.csv",
-			expectedScheme:   "file",
+			expectedScheme:   SchemeFile,
 			expectErr:        false,
 		},
 		{
@@ -72,7 +72,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "",
 			expectedPath:     "home/user/data.csv",
 			expectedFullPath: "home/user/data.csv",
-			expectedScheme:   "file",
+			expectedScheme:   SchemeFile,
 			expectErr:        false,
 		},
 		{
@@ -81,7 +81,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "path",
 			expectedPath:     "/to/file.txt",
 			expectedFullPath: "path/to/file.txt",
-			expectedScheme:   "file",
+			expectedScheme:   SchemeFile,
 			expectErr:        false,
 		},
 		{
@@ -90,7 +90,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "mybucket",
 			expectedPath:     "/folder/object.txt",
 			expectedFullPath: "mybucket/folder/object.txt",
-			expectedScheme:   "s3",
+			expectedScheme:   SchemeS3,
 			expectErr:        false,
 		},
 		{
@@ -99,7 +99,7 @@ func TestParseURI(t *testing.T) {
 			expectedHost:     "bucket",
 			expectedPath:     "/key",
 			expectedFullPath: "bucket/key",
-			expectedScheme:   "s3",
+			expectedScheme:   SchemeS3,
 			expectErr:        false,
 		},
 		{
