@@ -3,13 +3,14 @@
 > [!WARNING]  
 > Work in progress. Might change at any time.
 
-A standalone Go reader for [PMTiles](https://github.com/protomaps/PMTiles) that treats a tile archive like any other service (e.g., a database or HTTP client). Plug it into your handler and request tiles via `z/x/y`.
+A standalone golang reader for [PMTiles](https://github.com/protomaps/PMTiles) that treats a tile archive like any other service (e.g., a database or HTTP client). Plug it into your handler and request tiles via `z/x/y`.
 
 ## Features
 
 * Fast Hilbert ID resolution for quick tile look‑ups
 * Default [otter/v2](https://maypok86.github.io/otter) in‑memory cache (or bring‑your‑own cache support)
 * Protocol‑agnostic range reader (`file://`, `s3://`, `http(s)://` extensible)
+* Observability: OpenTelemetry metrics and traces (todo) using the global provider by default; override with `WithMeterProvider`/`WithTracerProvider`, or disable entirely with `WithDisableInstrumentation`
 
 
 ## Installation
