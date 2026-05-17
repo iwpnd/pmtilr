@@ -26,13 +26,13 @@ func newInt64Counter(
 	return meter.Int64Counter(name, opts...)
 }
 
-// instrumentedCacher satisfied the Cacher interface
-// that collects metrics and provides tracing.
+// instrumentedCacher satisfied the Cacher interface,
+// and wraps a Cacher to collect metrics and provide tracing.
 type instrumentedCacher struct {
 	cache Cacher
 
 	requestHistogram metric.Float64Histogram
-	cacheMissCounter metric.Int64Counter
+	cacheHitCounter  metric.Int64Counter
 
 	tracer trace.Tracer
 	meter  metric.Meter
@@ -43,7 +43,7 @@ func newInstrumentedCacher(
 	tracer trace.Tracer,
 	meter metric.Meter,
 ) (*instrumentedCacher, error) {
-	requestHistogramName := "cache.duration"
+	requestHistogramName := "pmtilr.directory.cache.request.duration"
 	requestHistogram, err := newFloat64Histogram(
 		meter,
 		requestHistogramName,
@@ -53,14 +53,14 @@ func newInstrumentedCacher(
 		return nil, fmt.Errorf("instantiating '%s' histogram: %w", requestHistogramName, err)
 	}
 
-	cacheMissCounterName := "cache.miss"
-	cacheMissCounter, err := newInt64Counter(
+	cacheHitCounterName := "pmtilr.directory.cache.hits"
+	cacheHitCounter, err := newInt64Counter(
 		meter,
-		cacheMissCounterName,
-		metric.WithDescription("cache miss"),
+		cacheHitCounterName,
+		metric.WithDescription("pmtilr repository in-memory directory cache hits"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("instantiating '%s' counter: %w", cacheMissCounterName, err)
+		return nil, fmt.Errorf("instantiating '%s' counter: %w", cacheHitCounterName, err)
 	}
 	return &instrumentedCacher{
 		cache:  cache,
@@ -68,7 +68,7 @@ func newInstrumentedCacher(
 		meter:  meter,
 
 		requestHistogram: requestHistogram,
-		cacheMissCounter: cacheMissCounter,
+		cacheHitCounter:  cacheHitCounter,
 	}, nil
 }
 
@@ -89,8 +89,8 @@ func (ic *instrumentedCacher) Get(ctx context.Context, key string) (Directory, b
 
 	dir, cached := ic.cache.Get(ctx, key)
 
-	if ic.cacheMissCounter.Enabled(ctx) {
-		ic.cacheMissCounter.Add(
+	if ic.cacheHitCounter.Enabled(ctx) {
+		ic.cacheHitCounter.Add(
 			ctx,
 			1,
 			metric.WithAttributes(
@@ -128,23 +128,119 @@ func (ic *instrumentedCacher) Clear() {
 	ic.cache.Clear()
 }
 
-// // instrumentedRepository sat
-// // that collects metrics and provides tracing.
-// type instrumentedRepository struct {
-// 	repository *Repository
-//
-// 	tracer trace.Tracer
-// 	meter  metric.Meter
-// }
-//
-// func newInstrumentedRepository(
-// 	repository *Repository,
-// 	tracer trace.Tracer,
-// 	meter metric.Meter,
-// ) *instrumentedRepository {
-// 	return &instrumentedRepository{
-// 		repository: repository,
-// 		tracer:     tracer,
-// 		meter:      meter,
-// 	}
-// }
+// instrumentedRepository satisfies the Repository interface
+// and wraps a Repository to collect metrics and provide tracing.
+type instrumentedRepository struct {
+	repository Repository
+
+	sharedRequestCounter   metric.Int64Counter
+	sharedRequestHistogram metric.Float64Histogram
+
+	tracer trace.Tracer
+	meter  metric.Meter
+}
+
+func newInstrumentedRepository(
+	repository Repository,
+	tracer trace.Tracer,
+	meter metric.Meter,
+) (*instrumentedRepository, error) {
+	sharedRequestDurationHistogramName := "pmtilr.repository.directory.request.duration"
+	sharedRequestHistogram, err := newFloat64Histogram(
+		meter,
+		sharedRequestDurationHistogramName,
+		metric.WithDescription("directory lookup request duration"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"instantiating '%s' metric: %w",
+			sharedRequestDurationHistogramName,
+			err,
+		)
+	}
+
+	sharedRequestCounterName := "pmtilr.repository.directory.request.shared"
+	sharedRequestCounter, err := newInt64Counter(
+		meter,
+		sharedRequestCounterName,
+		metric.WithDescription("request shared in singleflight request"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("instantiating '%s' metric: %w", sharedRequestCounterName, err)
+	}
+
+	return &instrumentedRepository{
+		repository:             repository,
+		tracer:                 tracer,
+		meter:                  meter,
+		sharedRequestCounter:   sharedRequestCounter,
+		sharedRequestHistogram: sharedRequestHistogram,
+	}, nil
+}
+
+func (ir *instrumentedRepository) Close() {
+	ir.repository.Close()
+}
+
+func (ir *instrumentedRepository) DirectoryAt(
+	ctx context.Context,
+	header HeaderV3,
+	reader RangeReader,
+	ranger Ranger,
+	decompress DecompressFunc,
+) (dir Directory, shared bool, err error) {
+	start := time.Now()
+	defer func() {
+		if ir.sharedRequestHistogram.Enabled(ctx) {
+			duration := time.Since(start)
+			ir.sharedRequestHistogram.Record(
+				ctx,
+				duration.Seconds(),
+				metric.WithAttributes(
+					attribute.KeyValue{Key: "success", Value: attribute.BoolValue(err == nil)},
+				),
+			)
+		}
+	}()
+
+	dir, shared, err = ir.repository.DirectoryAt(ctx, header, reader, ranger, decompress)
+	if ir.sharedRequestCounter.Enabled(ctx) {
+		ir.sharedRequestCounter.Add(
+			ctx,
+			1,
+			metric.WithAttributes(
+				attribute.KeyValue{
+					Key:   "shared",
+					Value: attribute.BoolValue(shared),
+				},
+				attribute.KeyValue{Key: "success", Value: attribute.BoolValue(err == nil)},
+			),
+		)
+	}
+
+	return dir, shared, err
+}
+
+func (ir *instrumentedRepository) TileEntry(
+	ctx context.Context,
+	header HeaderV3,
+	reader RangeReader,
+	decompress DecompressFunc,
+	z, x, y uint64,
+) (entry *Entry, err error) {
+	start := time.Now()
+	defer func() {
+		if ir.sharedRequestHistogram.Enabled(ctx) {
+			duration := time.Since(start)
+			ir.sharedRequestHistogram.Record(
+				ctx,
+				duration.Seconds(),
+				metric.WithAttributes(
+					attribute.KeyValue{Key: "success", Value: attribute.BoolValue(err == nil)},
+				),
+			)
+		}
+	}()
+
+	return ir.repository.TileEntry(ctx, header, reader, decompress, z, x, y)
+}

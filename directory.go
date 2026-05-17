@@ -329,7 +329,7 @@ type Repository interface {
 		reader RangeReader,
 		ranger Ranger,
 		decompress DecompressFunc,
-	) (Directory, error)
+	) (Directory, bool, error)
 	TileEntry(
 		ctx context.Context,
 		header HeaderV3,
@@ -362,14 +362,14 @@ func (r *DirectoryRepository) DirectoryAt(
 	reader RangeReader,
 	ranger Ranger,
 	decompress DecompressFunc,
-) (Directory, error) {
+) (Directory, bool, error) {
 	key := buildCacheKey(header.Etag, ranger.Offset(), ranger.Length())
 	dir, ok := r.cache.Get(ctx, key)
 	if ok {
-		return dir, nil
+		return dir, false, nil
 	}
 
-	dir, err, _ := r.sg.Do(key, func() (Directory, error) {
+	dir, err, shared := r.sg.Do(key, func() (Directory, error) {
 		// let's first see if the value is already cached in the mean time.
 		dir, ok := r.cache.Get(ctx, key)
 		if ok {
@@ -379,13 +379,13 @@ func (r *DirectoryRepository) DirectoryAt(
 		return NewDirectory(ctx, header, reader, ranger, decompress)
 	})
 	if err != nil {
-		return Directory{}, fmt.Errorf("resolving directory: %w", err)
+		return Directory{}, shared, fmt.Errorf("resolving directory: %w", err)
 	}
 	dir.key = key
 
 	_ = r.cache.Set(ctx, key, dir)
 
-	return dir, nil
+	return dir, shared, nil
 }
 
 func (r *DirectoryRepository) TileEntry(
@@ -403,7 +403,7 @@ func (r *DirectoryRepository) TileEntry(
 	dS := header.RootLength
 
 	for range directoryMaxDepth {
-		dir, derr := r.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
+		dir, _, derr := r.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
 		if derr != nil {
 			return nil, derr
 		}

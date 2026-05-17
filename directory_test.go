@@ -191,7 +191,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			key := fmt.Sprintf("%s:%d:%d", tc.header.Etag, tc.ranger.Offset(), tc.ranger.Length())
 
-			dir, err := repo.DirectoryAt(ctx, tc.header, tc.reader, tc.ranger, tc.decompress)
+			dir, _, err := repo.DirectoryAt(ctx, tc.header, tc.reader, tc.ranger, tc.decompress)
 
 			if tc.expectError && err == nil {
 				t.Errorf("expected error but got nil")

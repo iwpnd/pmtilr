@@ -28,6 +28,7 @@ type sourceConfig struct {
 	cacher     Cacher
 	decompress DecompressFunc
 	sfxshards  uint64
+	withOtel   bool
 
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
@@ -78,14 +79,21 @@ func WithMeterProvider(provider metric.MeterProvider) SourceOption {
 	}
 }
 
+// WithDisableInstrumentation disables all tracing and metrics on the pmtilr.Source.
+func WithDisableInstrumentation() SourceOption {
+	return func(config *sourceConfig) {
+		config.withOtel = false
+	}
+}
+
 // Source provides read access to protomap tiles, supporting concurrent
 // loads with singleflight deduplication.
 type Source struct {
-	reader     RangeReader          // Underlying reader for HTTP range requests
-	header     *HeaderV3            // Parsed header containing tile layout and ETag
-	meta       *Metadata            // Metadata for tile index and offsets
-	repository *DirectoryRepository // Repository for actual tile reads
-	decompress DecompressFunc       // Function handling decompression on the archive
+	reader     RangeReader    // Underlying reader for HTTP range requests
+	header     *HeaderV3      // Parsed header containing tile layout and ETag
+	meta       *Metadata      // Metadata for tile index and offsets
+	repository Repository     // Repository for actual tile reads
+	decompress DecompressFunc // Function handling decompression on the archive
 
 	tracer trace.Tracer
 	meter  metric.Meter
@@ -104,6 +112,7 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 	cfg := &sourceConfig{
 		tracerProvider: otel.GetTracerProvider(),
 		meterProvider:  otel.GetMeterProvider(),
+		withOtel:       true,
 	}
 
 	// apply user options
@@ -142,15 +151,29 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 	sg := singleflight.NewShardedGroup[string, Directory](
 		singleflight.WithShardCount(cfg.sfxshards),
 	)
-	icache, err := newInstrumentedCacher(cfg.cacher, tracer, meter)
-	if err != nil {
-		return nil, fmt.Errorf("creating source: %w", err)
+
+	cache := cfg.cacher
+	if cfg.withOtel {
+		c, err := newInstrumentedCacher(cache, tracer, meter)
+		if err != nil {
+			return nil, fmt.Errorf("creating source: %w", err)
+		}
+		cache = c
 	}
-	repository, err := NewDirectoryRepository(icache, sg)
+
+	repository, err := NewDirectoryRepository(cache, sg)
 	if err != nil {
 		return nil, err
 	}
 	s.repository = repository
+
+	if cfg.withOtel {
+		r, err := newInstrumentedRepository(repository, tracer, meter)
+		if err != nil {
+			return nil, err
+		}
+		s.repository = r
+	}
 
 	s.decompress = cfg.decompress
 	// Initialize default decompress function unless configured.
