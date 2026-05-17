@@ -330,13 +330,6 @@ type Repository interface {
 		ranger Ranger,
 		decompress DecompressFunc,
 	) (Directory, bool, error)
-	TileEntry(
-		ctx context.Context,
-		header HeaderV3,
-		reader RangeReader,
-		decompress DecompressFunc,
-		z, x, y uint64,
-	) (*Entry, error)
 }
 
 func NewDirectoryRepository(
@@ -388,8 +381,17 @@ func (r *DirectoryRepository) DirectoryAt(
 	return dir, shared, nil
 }
 
-func (r *DirectoryRepository) TileEntry(
+func (r *DirectoryRepository) Flush() {
+	r.cache.Clear()
+}
+
+func (r *DirectoryRepository) Close() {
+	r.cache.Close()
+}
+
+func TileEntry(
 	ctx context.Context,
+	repo Repository,
 	header HeaderV3,
 	reader RangeReader,
 	decompress DecompressFunc, z, x, y uint64,
@@ -403,7 +405,7 @@ func (r *DirectoryRepository) TileEntry(
 	dS := header.RootLength
 
 	for range directoryMaxDepth {
-		dir, _, derr := r.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
+		dir, _, derr := repo.DirectoryAt(ctx, header, reader, NewRange(dO, dS), decompress)
 		if derr != nil {
 			return nil, derr
 		}
@@ -426,12 +428,4 @@ func (r *DirectoryRepository) TileEntry(
 	}
 
 	return nil, fmt.Errorf("maximum directory depth exceeded")
-}
-
-func (r *DirectoryRepository) Flush() {
-	r.cache.Clear()
-}
-
-func (r *DirectoryRepository) Close() {
-	r.cache.Close()
 }

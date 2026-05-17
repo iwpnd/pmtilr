@@ -26,6 +26,74 @@ func newInt64Counter(
 	return meter.Int64Counter(name, opts...)
 }
 
+// instrumentedSource implements the Source interface
+// and wraps a Source to collect metrics and provide tracing.
+func newInstrumentedSource(
+	source *TileSource,
+	tracer trace.Tracer,
+	meter metric.Meter,
+) (Source, error) {
+	requestHistogramName := "pmtilr.source.tile.request.duration"
+	requestHistogram, err := newFloat64Histogram(
+		meter,
+		requestHistogramName,
+		metric.WithDescription("tile request duration"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("instantiating '%s' histogram: %w", requestHistogramName, err)
+	}
+
+	return &instrumentedSource{
+		source:           source,
+		tracer:           tracer,
+		meter:            meter,
+		requestHistogram: requestHistogram,
+	}, nil
+}
+
+type instrumentedSource struct {
+	source *TileSource
+
+	requestHistogram metric.Float64Histogram
+
+	tracer trace.Tracer
+	meter  metric.Meter
+}
+
+func (is *instrumentedSource) Tile(ctx context.Context, z, x, y uint64) (data []byte, err error) {
+	start := time.Now()
+	defer func() {
+		if is.requestHistogram.Enabled(ctx) {
+			duration := time.Since(start)
+			is.requestHistogram.Record(
+				ctx,
+				duration.Seconds(),
+				metric.WithAttributes(
+					attribute.KeyValue{Key: "success", Value: attribute.BoolValue(err == nil)},
+				),
+			)
+		}
+	}()
+
+	return is.source.Tile(ctx, z, x, y)
+}
+
+func (is *instrumentedSource) Header() HeaderV3 {
+	return is.source.Header()
+}
+
+func (is *instrumentedSource) Meta() Metadata {
+	return is.source.Meta()
+}
+
+func (is *instrumentedSource) Close() {
+	is.source.Close()
+}
+
+func (is *instrumentedSource) TileJSON(host string) TileJSON {
+	return is.source.TileJSON(host)
+}
+
 // instrumentedCacher satisfied the Cacher interface,
 // and wraps a Cacher to collect metrics and provide tracing.
 type instrumentedCacher struct {
@@ -219,28 +287,4 @@ func (ir *instrumentedRepository) DirectoryAt(
 	}
 
 	return dir, shared, err
-}
-
-func (ir *instrumentedRepository) TileEntry(
-	ctx context.Context,
-	header HeaderV3,
-	reader RangeReader,
-	decompress DecompressFunc,
-	z, x, y uint64,
-) (entry *Entry, err error) {
-	start := time.Now()
-	defer func() {
-		if ir.sharedRequestHistogram.Enabled(ctx) {
-			duration := time.Since(start)
-			ir.sharedRequestHistogram.Record(
-				ctx,
-				duration.Seconds(),
-				metric.WithAttributes(
-					attribute.KeyValue{Key: "success", Value: attribute.BoolValue(err == nil)},
-				),
-			)
-		}
-	}()
-
-	return ir.repository.TileEntry(ctx, header, reader, decompress, z, x, y)
 }

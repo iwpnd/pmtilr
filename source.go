@@ -86,9 +86,16 @@ func WithDisableInstrumentation() SourceOption {
 	}
 }
 
-// Source provides read access to protomap tiles, supporting concurrent
+type Source interface {
+	Tile(ctx context.Context, z, x, y uint64) ([]byte, error)
+	Header() HeaderV3
+	Meta() Metadata
+	TileJSON(host string) TileJSON
+}
+
+// TileSource provides read access to protomap tiles, supporting concurrent
 // loads with singleflight deduplication.
-type Source struct {
+type TileSource struct {
 	reader     RangeReader    // Underlying reader for HTTP range requests
 	header     *HeaderV3      // Parsed header containing tile layout and ETag
 	meta       *Metadata      // Metadata for tile index and offsets
@@ -102,9 +109,13 @@ type Source struct {
 // NewSource initializes a Source, optionally applying SourceConfigOptions,
 // and immediately loads the header and metadata.
 // It returns an error if initial header or metadata reading fails.
-func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Source, error) {
+func NewSource( //nolint:cyclop
+	ctx context.Context,
+	uri string,
+	options ...SourceOption,
+) (Source, error) {
 	// Create Source with defaults
-	s := &Source{
+	s := &TileSource{
 		header: &HeaderV3{},
 		meta:   &Metadata{},
 	}
@@ -189,11 +200,15 @@ func NewSource(ctx context.Context, uri string, options ...SourceOption) (*Sourc
 		return nil, err
 	}
 
+	if cfg.withOtel {
+		return newInstrumentedSource(s, tracer, meter)
+	}
+
 	return s, nil
 }
 
 // Tile returns the raw tile bytes for the specified z, x, y.
-func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
+func (s *TileSource) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
 	// NOTE: maybe validate zxy against header.bounds
 	if z < uint64(s.header.MinZoom) || z > uint64(s.header.MaxZoom) {
 		return []byte{}, fmt.Errorf(
@@ -204,7 +219,7 @@ func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
 		)
 	}
 
-	entry, err := s.repository.TileEntry(ctx, s.Header(), s.reader, s.decompress, z, x, y)
+	entry, err := TileEntry(ctx, s.repository, s.Header(), s.reader, s.decompress, z, x, y)
 	if err != nil {
 		return nil, err
 	}
@@ -217,17 +232,17 @@ func (s *Source) Tile(ctx context.Context, z, x, y uint64) ([]byte, error) {
 }
 
 // Header returns a copy of the current header.
-func (s *Source) Header() HeaderV3 {
+func (s *TileSource) Header() HeaderV3 {
 	return *s.header
 }
 
 // Meta returns a copy of the current metadata.
-func (s *Source) Meta() Metadata {
+func (s *TileSource) Meta() Metadata {
 	return *s.meta
 }
 
 // Close the source and its dependencies.
-func (s *Source) Close() {
+func (s *TileSource) Close() {
 	s.repository.Close()
 }
 
@@ -244,7 +259,7 @@ type TileJSON struct {
 // TileJSON produces a TileJSON document from the archive metadata.
 // For MVT and MLT tile types TileJSON v3 (with vector_layers);
 // else return TileJSON v2.
-func (s *Source) TileJSON(host string) TileJSON {
+func (s *TileSource) TileJSON(host string) TileJSON {
 	tileURL := fmt.Sprintf(
 		"%s/{z}/{x}/{y}%s",
 		host, s.Header().TileType.Ext(),
