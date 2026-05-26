@@ -1,16 +1,12 @@
 package pmtilr
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"io"
 	"iter"
 	"sort"
-	"sync"
 
 	sfx "github.com/iwpnd/singleflightx"
 )
@@ -19,23 +15,6 @@ const (
 	directoryMaxDepth    uint64 = 3
 	defaultSfxShardCount uint64 = directoryMaxDepth
 )
-
-var readerPool = sync.Pool{
-	New: func() any {
-		// allocate a *bytes.Reader with zero‐length backing slice
-		return new(bufio.Reader)
-	},
-}
-
-func acquireReader(newReader io.Reader) *bufio.Reader {
-	r := readerPool.Get().(*bufio.Reader) //nolint:errcheck,forcetypeassert
-	r.Reset(newReader)
-	return r
-}
-
-func releaseReader(usedReader *bufio.Reader) {
-	readerPool.Put(usedReader)
-}
 
 // Entry holds a reference to the exact location of a tile within
 // the PMTiles archive.
@@ -54,26 +33,7 @@ func (e *Entry) ReadTileBytes(
 	tileDataOffset uint64,
 ) ([]byte, error) {
 	offset := tileDataOffset + e.Offset
-	rc, err := rr.ReadRange(ctx, NewRange(offset, e.Length))
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if cerr := rc.Close(); cerr != nil {
-			if err == nil {
-				err = fmt.Errorf("closing tile reader: %w", cerr)
-			} else {
-				err = errors.Join(err, fmt.Errorf("closing tile reader: %w", cerr))
-			}
-		}
-	}()
-
-	b := bytes.NewBuffer(make([]byte, 0, e.Length))
-	_, cErr := io.Copy(b, rc)
-	if cErr != nil {
-		return nil, fmt.Errorf("reading tile: %w", cErr)
-	}
-	return b.Bytes(), nil
+	return rr.ReadRange(ctx, NewRange(offset, e.Length))
 }
 
 func (e *Entry) IsDirectory() bool {
@@ -97,7 +57,7 @@ type Entries []Entry
 // offset propagation.
 //
 // Returns a fully populated Entries slice, or an error if decoding fails.
-func readEntries(br *bufio.Reader) (entries Entries, err error) {
+func readEntries(br *bytes.Reader) (entries Entries, err error) {
 	countEntries, err := binary.ReadUvarint(br)
 	if err != nil {
 		return nil, fmt.Errorf("reading directory entries count: %w", err)
@@ -114,12 +74,12 @@ func readEntries(br *bufio.Reader) (entries Entries, err error) {
 
 // deserialize populates the Entries slice by reading tile ID deltas,
 // runlengths, lengths, and offsets from the given reader.
-func (e Entries) deserialize(br *bufio.Reader) (err error) {
+func (e Entries) deserialize(br *bytes.Reader) (err error) {
 	if e == nil {
 		return fmt.Errorf("cannot deserialize a nil array")
 	}
 
-	deserializeInOrder := []func(*bufio.Reader) error{
+	deserializeInOrder := []func(*bytes.Reader) error{
 		e.addTileID,
 		e.addRunLength,
 		e.addLength,
@@ -143,7 +103,7 @@ func (e Entries) deserialize(br *bufio.Reader) (err error) {
 //
 //	delta1 = 3 → TileID[0] = 3
 //	delta2 = 1 → TileID[1] = 4 (3 + 1)
-func (e Entries) addTileID(br *bufio.Reader) (err error) {
+func (e Entries) addTileID(br *bytes.Reader) (err error) {
 	var lastId uint64
 	for i := range e {
 		delta, err := binary.ReadUvarint(br)
@@ -158,7 +118,7 @@ func (e Entries) addTileID(br *bufio.Reader) (err error) {
 
 // addRunLength reads and assigns run lengths for each entry.
 // Each run length is Uvarint-encoded and cast to uint32.
-func (e Entries) addRunLength(br *bufio.Reader) (err error) {
+func (e Entries) addRunLength(br *bytes.Reader) (err error) {
 	for i := range e {
 		runLength, err := binary.ReadUvarint(br)
 		if err != nil {
@@ -171,7 +131,7 @@ func (e Entries) addRunLength(br *bufio.Reader) (err error) {
 
 // addLength reads and assigns the byte length for each tile entry.
 // Length values are Uvarint-encoded.
-func (e Entries) addLength(br *bufio.Reader) (err error) {
+func (e Entries) addLength(br *bytes.Reader) (err error) {
 	for i := range e {
 		length, err := binary.ReadUvarint(br)
 		if err != nil {
@@ -189,7 +149,7 @@ func (e Entries) addLength(br *bufio.Reader) (err error) {
 // entry’s offset plus its length.
 //
 // The PMTiles format stores offsets as (offset + 1), so actual offset = stored - 1.
-func (e Entries) addOffset(br *bufio.Reader) (err error) {
+func (e Entries) addOffset(br *bytes.Reader) (err error) {
 	for i := range e {
 		offset, err := binary.ReadUvarint(br)
 		if err != nil {
@@ -216,7 +176,7 @@ func NewDirectory(
 	ranger Ranger,
 	decompress DecompressFunc,
 ) (Directory, error) {
-	rangeReader, err := reader.ReadRange(
+	b, err := reader.ReadRange(
 		ctx,
 		ranger,
 	)
@@ -224,23 +184,13 @@ func NewDirectory(
 		return Directory{}, fmt.Errorf("reading directory from source: %w", err)
 	}
 
-	decompReader, err := decompress(rangeReader, header.InternalCompression)
+	db, err := decompress(b, header.InternalCompression)
 	if err != nil {
 		return Directory{}, fmt.Errorf("decompressing directory: %w", err)
 	}
 
-	defer func() {
-		if cerr := decompReader.Close(); cerr != nil {
-			if err == nil {
-				err = fmt.Errorf("closing decompressed reader: %w", cerr)
-			} else {
-				err = errors.Join(err, fmt.Errorf("closing decompressed reader: %w", cerr))
-			}
-		}
-	}()
-
 	dir := Directory{}
-	if err := dir.deserialize(decompReader); err != nil {
+	if err := dir.deserialize(db); err != nil {
 		return Directory{}, fmt.Errorf("deserializing directory: %w", err)
 	}
 
@@ -306,10 +256,8 @@ func (d *Directory) FindEntry(tileId uint64) *Entry {
 }
 
 // deserialize the directory from a decompression reader entry by entry.
-func (d *Directory) deserialize(r io.Reader) (err error) {
-	br := acquireReader(r)
-	defer releaseReader(br)
-
+func (d *Directory) deserialize(b []byte) (err error) {
+	br := bytes.NewReader(b)
 	entries, err := readEntries(br)
 	if err != nil {
 		return err

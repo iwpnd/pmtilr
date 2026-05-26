@@ -1,6 +1,7 @@
 package pmtilr
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -55,7 +56,7 @@ func (c Compression) MarshalJSON() ([]byte, error) {
 // DecompressFunc is a function that wraps an io.ReadCloser with the
 // appropriate decompressor for the given Compression. The returned
 // io.ReadCloser must be closed by the caller to release resources.
-type DecompressFunc = func(r io.ReadCloser, compression Compression) (io.ReadCloser, error)
+type DecompressFunc = func(b []byte, compression Compression) ([]byte, error)
 
 // gzPool stores reusable *gzip.Reader instances to reduce allocations.
 // gzip.Reader is not safe for concurrent use, but sync.Pool access is
@@ -110,24 +111,17 @@ func NewGZIPReadCloser(rc io.ReadCloser) (io.ReadCloser, error) {
 //   - CompressionGZIP: returns a pooled gzip ReadCloser that owns r and must
 //     be closed by the caller (which will, in turn, close r).
 //   - Other codecs: currently unsupported; returns an error.
-func Decompress(r io.ReadCloser, compression Compression) (io.ReadCloser, error) {
+func Decompress(data []byte, compression Compression) ([]byte, error) {
 	switch compression {
 	case CompressionNone, CompressionUnknown:
-		return r, nil
-
+		return data, nil
 	case CompressionGZIP:
-		gr, err := NewGZIPReadCloser(r)
+		gr, err := gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
 			return nil, fmt.Errorf("gzip.NewReader: %w", err)
 		}
-		return gr, nil
-
-	// TODO: extend
-	// case CompressionBrotli:
-	//   return NewBrotliReadCloser(r)
-	// case CompressionZstd:
-	//   return NewZstdReadCloser(r)
-
+		defer gr.Close() //nolint:errcheck
+		return io.ReadAll(gr)
 	default:
 		return nil, fmt.Errorf("unsupported compression: %v", compression)
 	}

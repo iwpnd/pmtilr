@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/segmentio/ksuid"
 )
@@ -46,30 +45,24 @@ type HeaderV3 struct {
 	headerStr string // cache string representation.
 }
 
-func NewHeader(r io.Reader) (*HeaderV3, error) {
+func NewHeader(b []byte) (*HeaderV3, error) {
 	h := &HeaderV3{}
-	d := make([]byte, HeaderSizeBytes)
-	_, err := io.ReadFull(r, d)
-	if err != nil {
-		return h, fmt.Errorf("reading header: %w", err)
-	}
-	if err := h.deserialize(d); err != nil {
+	if err := h.deserialize(b); err != nil {
 		return h, err
 	}
 	return h, nil
 }
 
 func (h *HeaderV3) ReadFrom(ctx context.Context, r RangeReader) (err error) {
-	rangeReader, err := r.ReadRange(
+	b, err := r.ReadRange(
 		ctx,
 		NewRange(HeaderOffset, HeaderSizeBytes),
 	)
 	if err != nil {
 		return fmt.Errorf("reading header: %w", err)
 	}
-	defer rangeReader.Close() //nolint:errcheck
 
-	newHeader, err := NewHeader(rangeReader)
+	newHeader, err := NewHeader(b)
 	if err != nil {
 		return fmt.Errorf("reading header: %w", err)
 	}
@@ -98,6 +91,10 @@ func (h HeaderV3) String() string {
 }
 
 func (h *HeaderV3) deserialize(d []byte) error {
+	if len(d) < HeaderSizeBytes {
+		return fmt.Errorf("header too short: got %d bytes, need %d",
+			len(d), HeaderSizeBytes)
+	}
 	// 1) magic
 	if string(d[0:7]) != "PMTiles" {
 		return fmt.Errorf("magic number not detected; confirm this is a PMTiles archive")

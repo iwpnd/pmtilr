@@ -1,7 +1,6 @@
 package pmtilr
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -134,9 +133,8 @@ func writeUvarint(buf *bytes.Buffer, val uint64) {
 
 func TestEntriesDeserializeNilReceiver(t *testing.T) {
 	var e Entries
-	br := bufio.NewReader(bytes.NewReader(nil))
 
-	err := e.deserialize(br)
+	err := e.deserialize(nil)
 	if err == nil || !strings.Contains(err.Error(), "cannot deserialize") {
 		t.Errorf("expected nil slice error, got: %v", err)
 	}
@@ -206,13 +204,12 @@ func TestReadEntries(t *testing.T) {
 				},
 			}
 
-			readCloser, err := mockReader.ReadRange(context.Background(), mockRanger{1337, 31337})
+			b, err := mockReader.ReadRange(context.Background(), mockRanger{1337, 31337})
 			if err != nil {
 				t.Fatalf("mockRangeReader failed: %v", err)
 			}
-			defer readCloser.Close()
 
-			br := bufio.NewReader(readCloser)
+			br := bytes.NewReader(b)
 			entries, err := readEntries(br)
 
 			if tc.expectErr {
@@ -335,22 +332,26 @@ func BenchmarkDeserializeIsGzipReader(b *testing.B) {
 	if err != nil {
 		b.Fatalf("gzip NewReader failed: %v", err)
 	}
+	defer gr.Close()
+	decompressed, err := io.ReadAll(gr)
+	if err != nil {
+		b.Fatalf("decompressing: %v", err)
+	}
 
 	b.ResetTimer()
 	for b.Loop() {
 		d := &Directory{}
-		_ = d.deserialize(gr)
+		_ = d.deserialize(decompressed)
 	}
 }
 
 func BenchmarkDeserializeIsByteReader(b *testing.B) {
 	data := generateFakeDirectoryData(10_000)
-	br := bytes.NewReader(data)
 
 	b.ResetTimer()
 	for b.Loop() {
 		d := &Directory{}
-		_ = d.deserialize(br)
+		_ = d.deserialize(data)
 	}
 }
 
@@ -359,13 +360,13 @@ type mockRangeReader struct {
 	err  error
 }
 
-func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) (io.ReadCloser, error) {
+func (m *mockRangeReader) ReadRange(_ context.Context, r Ranger) ([]byte, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	key := fmt.Sprintf("%d:%d", r.Offset(), r.Length())
 	data := m.data[key]
-	return io.NopCloser(bytes.NewReader(data)), nil
+	return data, nil
 }
 
 type mockRanger struct {
@@ -384,11 +385,11 @@ func fakeHeader(etag string) HeaderV3 {
 	}
 }
 
-func noopDecompressor(r io.ReadCloser, _ Compression) (io.ReadCloser, error) {
-	return io.NopCloser(r), nil
+func noopDecompressor(b []byte, _ Compression) ([]byte, error) {
+	return b, nil
 }
 
-func errorDecompressor(r io.ReadCloser, _ Compression) (io.ReadCloser, error) {
+func errorDecompressor(b []byte, _ Compression) ([]byte, error) {
 	return nil, errors.New("failed to decompress")
 }
 

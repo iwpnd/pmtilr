@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/iwpnd/rip"
-	"golang.org/x/exp/mmap"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -95,7 +95,7 @@ func NewRange(offset, size uint64) Range {
 type RangeReader interface {
 	// ReadRange reads the bytes defined by the Ranger and returns a ReadCloser,
 	// or an error if reading fails. The caller is responsible for closing the ReadCloser.
-	ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error)
+	ReadRange(ctx context.Context, ranger Ranger) ([]byte, error)
 }
 
 // NewRangeReader parses a URI and returns an appropriate RangeReader implementation.
@@ -152,11 +152,10 @@ func NewHTTPRangeReader(host string, options ...rip.Option) (*HTTPRangeReader, e
 }
 
 // ReadRange fetches a byte range from the upstream host.
-// The caller is responsible for closing the returned io.ReadCloser.
 //
 // Returns an error if the request fails or the server responds with a
 // non-success status code (> 399).
-func (h *HTTPRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+func (h *HTTPRangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
 	req := h.c.NR().SetHeader("Range", bytesRange(ranger.Offset(), ranger.Length()))
 	res, err := req.Execute(ctx, "GET", "")
 	if err != nil {
@@ -165,8 +164,14 @@ func (h *HTTPRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.Read
 	if res.IsError() {
 		return nil, fmt.Errorf("%w: %d", ErrUpstreamStatus, res.StatusCode())
 	}
+	defer res.Close() //nolint:errcheck
 
-	return res.RawBody(), nil
+	buf := make([]byte, ranger.Length())
+	n, err := io.ReadFull(res.RawBody(), buf)
+	if err != nil && errors.Is(err, io.ErrUnexpectedEOF) && errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return buf[:n], nil
 }
 
 // FileRangeReader implements RangeReader by reading from an io.ReaderAt (file).
@@ -186,40 +191,69 @@ func NewFileRangeReader(path string) (*FileRangeReader, error) {
 }
 
 // ReadRange reads bytes from the underlying file at the specified range.
-// It validates the Ranger and returns a ReadCloser using SectionReader for streaming access.
-func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+// It validates the Ranger and returns []byte that is clamped.
+func (f *FileRangeReader) ReadRange(
+	ctx context.Context, ranger Ranger,
+) ([]byte, error) {
 	if err := ranger.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
-	return io.NopCloser(
-		io.NewSectionReader(
-			f.file, int64(ranger.Offset()), int64(ranger.Length()), //nolint:gosec
-		),
-	), nil
+
+	buf := make([]byte, ranger.Length())
+	n, err := f.file.ReadAt(buf, int64(ranger.Offset())) //nolint:gosec
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	return buf[:n], nil
 }
 
 type MMapFileRangeReader struct {
-	file *mmap.ReaderAt
+	data []byte
 }
 
 func NewMMapFileRangeReader(path string) (*MMapFileRangeReader, error) {
-	filePath := filepath.Clean(path)
-	f, err := mmap.Open(filePath)
+	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
-		return nil, fmt.Errorf("MMapFileRangeReader opening file at path %s: %w", path, err)
+		return nil, err
 	}
-	return &MMapFileRangeReader{file: f}, nil
+	defer f.Close() //nolint:errcheck
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := unix.Mmap(int(f.Fd()), 0, int(info.Size()),
+		unix.PROT_READ, unix.MAP_SHARED)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MMapFileRangeReader{data: data}, nil
 }
 
-func (f *MMapFileRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+func (f *MMapFileRangeReader) ReadRange(
+	ctx context.Context, ranger Ranger,
+) ([]byte, error) {
 	if err := ranger.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
-	return io.NopCloser(
-		io.NewSectionReader(
-			f.file, int64(ranger.Offset()), int64(ranger.Length()), //nolint:gosec
-		),
-	), nil
+
+	off := ranger.Offset()
+	end := off + ranger.Length()
+
+	if off >= uint64(len(f.data)) {
+		return nil, nil
+	}
+	if end > uint64(len(f.data)) {
+		end = uint64(len(f.data))
+	}
+
+	return f.data[off:end], nil
+}
+
+func (f *MMapFileRangeReader) Close() error {
+	return unix.Munmap(f.data)
 }
 
 // S3Client is an interface providing methods used by the S3RangeReader.
@@ -259,8 +293,8 @@ func NewS3RangeReader(bucket, key string, client S3Client) (*S3RangeReader, erro
 }
 
 // ReadRange reads bytes from the underlying S3 object at the specified range.
-// It validates the Ranger and returns a ReadCloser for streaming access.
-func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+// It validates the Ranger and returns []byte that is clamped.
+func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) ([]byte, error) {
 	if err := ranger.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}
@@ -277,8 +311,14 @@ func (s *S3RangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCl
 	if err != nil {
 		return nil, err
 	}
+	defer output.Body.Close() //nolint:errcheck
 
-	return output.Body, nil
+	buf := make([]byte, ranger.Length())
+	n, err := io.ReadFull(output.Body, buf)
+	if err != nil && errors.Is(err, io.ErrUnexpectedEOF) && errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return buf[:n], nil
 }
 
 // disableResponseValidation disables checksum validation on the response.  This

@@ -1,7 +1,6 @@
 package pmtilr
 
 import (
-	"bytes"
 	"encoding/binary"
 	"strings"
 	"testing"
@@ -67,8 +66,7 @@ func TestNewHeader(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			data := makeValidHeaderBytes(tc.modify)
-			r := bytes.NewReader(data)
-			h, err := NewHeader(r)
+			h, err := NewHeader(data)
 
 			if (err != nil) != tc.wantErr {
 				t.Errorf("expected error: %v, got: %v", tc.wantErr, err)

@@ -3,7 +3,6 @@ package pmtilr
 import (
 	"bytes"
 	"compress/gzip"
-	"io"
 	"testing"
 )
 
@@ -43,18 +42,17 @@ func TestDecompress(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			var r io.Reader
+			var d []byte
 
 			if tc.compression == CompressionGZIP {
 				gw := gzip.NewWriter(&buf)
 				_, _ = gw.Write([]byte(tc.input))
 				_ = gw.Close()
-				r = &buf
+				d = buf.Bytes()
 			} else {
-				r = bytes.NewReader([]byte(tc.input))
+				d = []byte(tc.input)
 			}
-
-			dr, err := Decompress(io.NopCloser(r), tc.compression)
+			out, err := Decompress(d, tc.compression)
 			if tc.expectError {
 				if err == nil {
 					t.Errorf("expected error, got none")
@@ -63,11 +61,6 @@ func TestDecompress(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-
-			out, err := io.ReadAll(dr)
-			if err != nil {
-				t.Fatalf("reading decompressed data: %v", err)
 			}
 
 			if string(out) != tc.input {
