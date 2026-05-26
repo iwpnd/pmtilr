@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/iwpnd/rip"
@@ -266,10 +268,21 @@ type S3Client interface {
 }
 
 func createS3Client(ctx context.Context) (S3Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
+	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(tr *http.Transport) {
+		tr.MaxIdleConns = 200
+		tr.MaxIdleConnsPerHost = 200
+		tr.MaxConnsPerHost = 200
+	})
+
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithHTTPClient(httpClient),
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	cfg.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+	cfg.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.UsePathStyle = true
