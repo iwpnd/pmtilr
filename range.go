@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/iwpnd/rip"
+	"golang.org/x/exp/mmap"
 )
 
 const (
@@ -179,7 +180,7 @@ func NewFileRangeReader(path string) (*FileRangeReader, error) {
 	filePath := filepath.Clean(path)
 	f, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("opening file at path %s: %w", path, err)
+		return nil, fmt.Errorf("FileRrangeReader opening file at path %s: %w", path, err)
 	}
 	return &FileRangeReader{file: f}, nil
 }
@@ -187,6 +188,30 @@ func NewFileRangeReader(path string) (*FileRangeReader, error) {
 // ReadRange reads bytes from the underlying file at the specified range.
 // It validates the Ranger and returns a ReadCloser using SectionReader for streaming access.
 func (f *FileRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+	if err := ranger.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ranger: %w", err)
+	}
+	return io.NopCloser(
+		io.NewSectionReader(
+			f.file, int64(ranger.Offset()), int64(ranger.Length()), //nolint:gosec
+		),
+	), nil
+}
+
+type MMapFileRangeReader struct {
+	file *mmap.ReaderAt
+}
+
+func NewMMapFileRangeReader(path string) (*MMapFileRangeReader, error) {
+	filePath := filepath.Clean(path)
+	f, err := mmap.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("MMapFileRangeReader opening file at path %s: %w", path, err)
+	}
+	return &MMapFileRangeReader{file: f}, nil
+}
+
+func (f *MMapFileRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
 	if err := ranger.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ranger: %w", err)
 	}

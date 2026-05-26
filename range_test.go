@@ -43,7 +43,8 @@ func TestHTTPRangeReader(t *testing.T) {
 						}
 						data := []byte("fake tile data")
 
-						w.Header().Set("Content-Range", "bytes 0-3"+"/"+fmt.Sprintf("%d", len(data)))
+						w.Header().
+							Set("Content-Range", "bytes 0-3"+"/"+fmt.Sprintf("%d", len(data)))
 						w.Header().Set("Content-Length", "4")
 						w.WriteHeader(http.StatusPartialContent)
 						w.Write(data[0:4])
@@ -123,7 +124,11 @@ func TestHTTPRangeReader(t *testing.T) {
 			}
 
 			if len(tt.expectedData) != len(result) {
-				t.Fatalf("expected equal length of expected data %d and got data %d", len(tt.expectedData), len(result))
+				t.Fatalf(
+					"expected equal length of expected data %d and got data %d",
+					len(tt.expectedData),
+					len(result),
+				)
 			}
 
 			if tt.expectedData != string(result) {
@@ -183,14 +188,17 @@ func TestFileRangeReader(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run("file "+tt.name, func(t *testing.T) {
 			testFile := tt.setupFn(t)
 			reader, err := pmtilr.NewFileRangeReader(testFile)
 			if err != nil {
 				t.Fatal("unexpected error")
 			}
 
-			readCloser, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
+			readCloser, err := reader.ReadRange(
+				t.Context(),
+				pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)),
+			)
 			if !errors.Is(err, tt.expectedError) {
 				t.Fatal("expected error, and received error do not match")
 			}
@@ -202,7 +210,45 @@ func TestFileRangeReader(t *testing.T) {
 			}
 
 			if len(tt.expectedData) != len(result) {
-				t.Fatalf("expected equal length of expected data %d and got data %d", len(tt.expectedData), len(result))
+				t.Fatalf(
+					"expected equal length of expected data %d and got data %d",
+					len(tt.expectedData),
+					len(result),
+				)
+			}
+
+			if tt.expectedData != string(result) {
+				t.Fatalf("expected %s, got: %s", tt.expectedData, string(result))
+			}
+		})
+
+		t.Run("mmap "+tt.name, func(t *testing.T) {
+			testFile := tt.setupFn(t)
+			reader, err := pmtilr.NewMMapFileRangeReader(testFile)
+			if err != nil {
+				t.Fatal("unexpected error")
+			}
+
+			readCloser, err := reader.ReadRange(
+				t.Context(),
+				pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)),
+			)
+			if !errors.Is(err, tt.expectedError) {
+				t.Fatal("expected error, and received error do not match")
+			}
+
+			result := []byte{}
+			if readCloser != nil {
+				defer readCloser.Close()
+				result, _ = io.ReadAll(readCloser)
+			}
+
+			if len(tt.expectedData) != len(result) {
+				t.Fatalf(
+					"expected equal length of expected data %d and got data %d",
+					len(tt.expectedData),
+					len(result),
+				)
 			}
 
 			if tt.expectedData != string(result) {
@@ -295,7 +341,10 @@ func TestS3RangeReader(t *testing.T) {
 				t.Fatal("unexpected error")
 			}
 
-			readCloser, err := reader.ReadRange(t.Context(), pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)))
+			readCloser, err := reader.ReadRange(
+				t.Context(),
+				pmtilr.NewRange(uint64(tt.offset), uint64(tt.length)),
+			)
 			if !errors.Is(err, tt.expectedError) {
 				t.Fatalf("expected error, and received error do not match")
 			}
@@ -307,7 +356,11 @@ func TestS3RangeReader(t *testing.T) {
 			}
 
 			if len(tt.expectedData) != len(result) {
-				t.Fatalf("expected equal length of expected data %d and got data %d", len(tt.expectedData), len(result))
+				t.Fatalf(
+					"expected equal length of expected data %d and got data %d",
+					len(tt.expectedData),
+					len(result),
+				)
 			}
 
 			if tt.expectedData != string(result) {

@@ -10,11 +10,120 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	singleflight "github.com/iwpnd/singleflightx"
 )
+
+type NDirectory struct {
+	TileID    []uint64
+	Offset    []uint64
+	Length    []uint64
+	RunLength []uint32
+}
+
+func fakeDirectories() (*Directory, *NDirectory) {
+	var size uint64 = 10000
+	d := &Directory{key: "1", size: size}
+	nd := &NDirectory{}
+
+	for i := range size {
+		d.entries = append(d.entries, Entry{TileID: i, Offset: i, Length: i, RunLength: uint32(i)})
+		nd.TileID = append(nd.TileID, i)
+		nd.Offset = append(nd.Offset, i)
+		nd.Length = append(nd.Length, i)
+		nd.RunLength = append(nd.RunLength, uint32(i))
+	}
+
+	return d, nd
+}
+
+func BenchmarkSearchOld(b *testing.B) {
+	d, _ := fakeDirectories()
+
+	var tileId uint64 = 3137
+
+	b.ResetTimer()
+
+	b.Run("current", func(b *testing.B) {
+		for b.Loop() {
+			i := sort.Search(len(d.entries), func(i int) bool {
+				return d.entries[i].TileID > tileId
+			})
+			_ = i
+		}
+	})
+}
+
+func BenchmarkSearchNew(b *testing.B) {
+	_, nd := fakeDirectories()
+
+	var tileId uint64 = 3137
+
+	b.ResetTimer()
+
+	b.Run("new", func(b *testing.B) {
+		for b.Loop() {
+			i := sort.Search(len(nd.TileID), func(i int) bool {
+				return nd.TileID[i] > tileId
+			})
+			_ = Entry{
+				TileID:    nd.TileID[i],
+				Offset:    nd.Offset[i],
+				Length:    nd.Length[i],
+				RunLength: nd.RunLength[i],
+			}
+		}
+	})
+}
+
+func BenchmarkSearchConcurrent(b *testing.B) {
+	d, nd := fakeDirectories()
+
+	var tileId uint64 = 3137
+
+	b.ResetTimer()
+
+	b.Run("current", func(b *testing.B) {
+		for b.Loop() {
+			var wg sync.WaitGroup
+
+			for range 5 {
+				wg.Go(func() {
+					i := sort.Search(len(d.entries), func(j int) bool {
+						return d.entries[j].TileID > tileId
+					})
+					_ = i
+				})
+			}
+			wg.Wait()
+		}
+	})
+
+	b.Run("new", func(b *testing.B) {
+		for b.Loop() {
+			var wg sync.WaitGroup
+
+			for range 5 {
+				wg.Go(func() {
+					i := sort.Search(len(nd.TileID), func(j int) bool {
+						return nd.TileID[j] > tileId
+					})
+					_ = Entry{
+						TileID:    nd.TileID[i],
+						Offset:    nd.Offset[i],
+						Length:    nd.Length[i],
+						RunLength: nd.RunLength[i],
+					}
+				})
+			}
+			wg.Wait()
+		}
+	})
+}
 
 func writeUvarint(buf *bytes.Buffer, val uint64) {
 	// enough space for largest possible encoding of uin64

@@ -42,10 +42,10 @@ func releaseReader(usedReader *bufio.Reader) {
 // Each entry describes either where a specific tile can be found in the tile data
 // section or where a leaf directory can be found in the leaf directories section.
 type Entry struct {
-	TileID    uint64 `json:"tile_id"`
-	Offset    uint64 `json:"offset"`
-	Length    uint64 `json:"length"`
-	RunLength uint32 `json:"run_length"`
+	TileID    uint64 `json:"tile_id"`    // 8bytes
+	Offset    uint64 `json:"offset"`     // 8bytes
+	Length    uint64 `json:"length"`     // 8bytes
+	RunLength uint32 `json:"run_length"` // 4bytes
 }
 
 func (e *Entry) ReadTileBytes(
