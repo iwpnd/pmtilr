@@ -1,3 +1,9 @@
+## [1.3.2](https://github.com/iwpnd/pmtilr/compare/v1.3.1...v1.3.2) (2026-05-26)
+
+### 🐛 Bug Fixes
+
+* 🐛 mmap file range reader ([d2b6f87](https://github.com/iwpnd/pmtilr/commit/d2b6f8759604f9f254b33c04b70defc19946cf0f))
+
 ## [1.3.1](https://github.com/iwpnd/pmtilr/compare/v1.3.0...v1.3.1) (2026-05-17)
 
 ### 🐛 Bug Fixes
