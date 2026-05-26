@@ -251,7 +251,7 @@ func (f *MMapFileRangeReader) ReadRange(
 		end = uint64(len(f.data))
 	}
 
-	return append([]byte(nil), f.data[off:end]...), nil
+	return f.data[off:end], nil
 }
 
 func (f *MMapFileRangeReader) Close() error {

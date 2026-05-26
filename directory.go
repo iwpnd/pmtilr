@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"iter"
-	"os"
 	"sort"
 
 	sfx "github.com/iwpnd/singleflightx"
@@ -155,15 +154,6 @@ func (e Entries) addOffset(br *bytes.Reader) (err error) {
 		offset, err := binary.ReadUvarint(br)
 		if err != nil {
 			return fmt.Errorf("reading offset at %d: %w", i, err)
-		}
-		if offset == 0 && i == 0 {
-			fmt.Fprintf(
-				os.Stderr,
-				"BUG: directory entry 0 has stored offset 0, tileID=%d runLength=%d length=%d\n",
-				e[0].TileID,
-				e[0].RunLength,
-				e[0].Length,
-			)
 		}
 
 		if offset == 0 && i > 0 {
