@@ -251,7 +251,7 @@ func (f *MMapFileRangeReader) ReadRange(
 		end = uint64(len(f.data))
 	}
 
-	return f.data[off:end], nil
+	return append([]byte(nil), f.data[off:end]...), nil
 }
 
 func (f *MMapFileRangeReader) Close() error {
@@ -269,7 +269,7 @@ type S3Client interface {
 
 func createS3Client(ctx context.Context) (S3Client, error) {
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(tr *http.Transport) {
-		tr.MaxIdleConns = 200
+		tr.MaxIdleConns = 50
 		tr.MaxIdleConnsPerHost = 200
 		tr.MaxConnsPerHost = 200
 	})
