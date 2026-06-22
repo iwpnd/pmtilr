@@ -1,3 +1,11 @@
+## [1.3.3](https://github.com/iwpnd/pmtilr/compare/v1.3.2...v1.3.3) (2026-06-22)
+
+### 🧹 Miscellaneous
+
+* **deps:** bump github.com/aws/aws-sdk-go-v2 from 1.41.7 to 1.41.9 ([#95](https://github.com/iwpnd/pmtilr/issues/95)) ([33ff796](https://github.com/iwpnd/pmtilr/commit/33ff7964c69b02ca54d13a4fbd32a70305c63165))
+* **deps:** bump go.opentelemetry.io/otel from 1.43.0 to 1.44.0 ([#93](https://github.com/iwpnd/pmtilr/issues/93)) ([8b224dc](https://github.com/iwpnd/pmtilr/commit/8b224dc50b97af581be71de19a0351fc3d5e6a49))
+* **deps:** bump go.opentelemetry.io/otel/metric from 1.43.0 to 1.44.0 ([#96](https://github.com/iwpnd/pmtilr/issues/96)) ([1bce49b](https://github.com/iwpnd/pmtilr/commit/1bce49b6ba7e387a151657b37141539154f6d3ff))
+
 ## [1.3.2](https://github.com/iwpnd/pmtilr/compare/v1.3.1...v1.3.2) (2026-05-26)
 
 ### 🐛 Bug Fixes
