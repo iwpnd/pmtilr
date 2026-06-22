@@ -1,3 +1,9 @@
+## [1.3.4](https://github.com/iwpnd/pmtilr/compare/v1.3.3...v1.3.4) (2026-06-22)
+
+### 🧹 Miscellaneous
+
+* **deps:** bump github.com/aws/aws-sdk-go-v2/service/s3 ([#92](https://github.com/iwpnd/pmtilr/issues/92)) ([2ec412a](https://github.com/iwpnd/pmtilr/commit/2ec412a6f94f5f15005d2e98a26dbd535f3f16a4))
+
 ## [1.3.3](https://github.com/iwpnd/pmtilr/compare/v1.3.2...v1.3.3) (2026-06-22)
 
 ### 🧹 Miscellaneous
