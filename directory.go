@@ -249,8 +249,11 @@ func NewDirectory(
 
 // Directory is a collection of Tile Entries.
 type Directory struct {
-	key     string
-	size    uint64
+	key  string
+	size uint64
+
+	// TODO: refactor to be struct of arrays
+	// []TileID, []RunLength, []Length and []Offset
 	entries Entries
 }
 
