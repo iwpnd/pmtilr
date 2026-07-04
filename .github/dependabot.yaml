@@ -7,22 +7,13 @@ updates:
     groups:
       aws:
         patterns:
+          - "github.com/aws/aws-sdk-go-v2"
           - "github.com/aws/aws-sdk-go-v2/*"
-        update-types:
-          - minor
     schedule:
       interval: monthly
-
   - package-ecosystem: github-actions
     directory: /
     commit-message:
       prefix: "ci(gha): "
-    schedule:
-      interval: monthly
-
-  - package-ecosystem: docker
-    directory: /
-    commit-message:
-      prefix: "build(docker): "
     schedule:
       interval: monthly
