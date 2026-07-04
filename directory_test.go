@@ -3,134 +3,17 @@ package pmtilr
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
-	"sort"
 	"strings"
-	"sync"
 	"testing"
 
 	singleflight "github.com/iwpnd/singleflightx"
 )
-
-type NDirectory struct {
-	TileID    []uint64
-	Offset    []uint64
-	Length    []uint64
-	RunLength []uint32
-}
-
-func fakeDirectories() (*Directory, *NDirectory) {
-	var size uint64 = 10000
-	d := &Directory{key: "1", size: size}
-	nd := &NDirectory{}
-
-	for i := range size {
-		d.entries = append(d.entries, Entry{TileID: i, Offset: i, Length: i, RunLength: uint32(i)})
-		nd.TileID = append(nd.TileID, i)
-		nd.Offset = append(nd.Offset, i)
-		nd.Length = append(nd.Length, i)
-		nd.RunLength = append(nd.RunLength, uint32(i))
-	}
-
-	return d, nd
-}
-
-func BenchmarkSearchOld(b *testing.B) {
-	d, _ := fakeDirectories()
-
-	var tileId uint64 = 3137
-
-	b.ResetTimer()
-
-	b.Run("current", func(b *testing.B) {
-		for b.Loop() {
-			i := sort.Search(len(d.entries), func(i int) bool {
-				return d.entries[i].TileID > tileId
-			})
-			_ = i
-		}
-	})
-}
-
-func BenchmarkSearchNew(b *testing.B) {
-	_, nd := fakeDirectories()
-
-	var tileId uint64 = 3137
-
-	b.ResetTimer()
-
-	b.Run("new", func(b *testing.B) {
-		for b.Loop() {
-			i := sort.Search(len(nd.TileID), func(i int) bool {
-				return nd.TileID[i] > tileId
-			})
-			_ = Entry{
-				TileID:    nd.TileID[i],
-				Offset:    nd.Offset[i],
-				Length:    nd.Length[i],
-				RunLength: nd.RunLength[i],
-			}
-		}
-	})
-}
-
-func BenchmarkSearchConcurrent(b *testing.B) {
-	d, nd := fakeDirectories()
-
-	var tileId uint64 = 3137
-
-	b.ResetTimer()
-
-	b.Run("current", func(b *testing.B) {
-		for b.Loop() {
-			var wg sync.WaitGroup
-
-			for range 5 {
-				wg.Go(func() {
-					i := sort.Search(len(d.entries), func(j int) bool {
-						return d.entries[j].TileID > tileId
-					})
-					_ = i
-				})
-			}
-			wg.Wait()
-		}
-	})
-
-	b.Run("new", func(b *testing.B) {
-		for b.Loop() {
-			var wg sync.WaitGroup
-
-			for range 5 {
-				wg.Go(func() {
-					i := sort.Search(len(nd.TileID), func(j int) bool {
-						return nd.TileID[j] > tileId
-					})
-					_ = Entry{
-						TileID:    nd.TileID[i],
-						Offset:    nd.Offset[i],
-						Length:    nd.Length[i],
-						RunLength: nd.RunLength[i],
-					}
-				})
-			}
-			wg.Wait()
-		}
-	})
-}
-
-func writeUvarint(buf *bytes.Buffer, val uint64) {
-	// enough space for largest possible encoding of uin64
-	var tmp [10]byte
-	n := binary.PutUvarint(tmp[:], val)
-	buf.Write(tmp[:n])
-}
 
 func TestEntriesDeserializeNilReceiver(t *testing.T) {
 	var e Entries
@@ -206,7 +89,7 @@ func TestReadEntries(t *testing.T) {
 				},
 			}
 
-			readCloser, err := mockReader.ReadRange(context.Background(), mockRanger{1337, 31337})
+			readCloser, err := mockReader.ReadRange(t.Context(), mockRanger{1337, 31337})
 			if err != nil {
 				t.Fatalf("mockRangeReader failed: %v", err)
 			}
@@ -254,7 +137,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 			name: "success on cache miss",
 			reader: &mockRangeReader{
 				data: map[string][]byte{
-					"1337:31337": fakeDirectoryData(),
+					"1337:31337": generateFakeDirectoryData(10),
 				},
 			},
 			header:          fakeHeader("etag1337"),
@@ -275,7 +158,7 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 			name: "decompression error",
 			reader: &mockRangeReader{
 				data: map[string][]byte{
-					"1337:31337": fakeDirectoryData(),
+					"1337:31337": generateFakeDirectoryData(10),
 				},
 			},
 			header:      fakeHeader("fails-horrible"),
@@ -319,39 +202,11 @@ func TestRepositoryDirectoryAt(t *testing.T) {
 	}
 }
 
-func BenchmarkDeserializeIsGzipReader(b *testing.B) {
-	raw := generateFakeDirectoryData(10_000)
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	if _, err := gw.Write(raw); err != nil {
-		b.Fatalf("gzip write failed: %v", err)
-	}
-	if err := gw.Close(); err != nil {
-		b.Fatalf("gzip close failed: %v", err)
-	}
-	compressed := buf.Bytes()
-	r := bytes.NewReader(compressed)
-	gr, err := gzip.NewReader(r)
-	if err != nil {
-		b.Fatalf("gzip NewReader failed: %v", err)
-	}
-
-	b.ResetTimer()
-	for b.Loop() {
-		d := &Directory{}
-		_ = d.deserialize(gr)
-	}
-}
-
-func BenchmarkDeserializeIsByteReader(b *testing.B) {
-	data := generateFakeDirectoryData(10_000)
-	br := bytes.NewReader(data)
-
-	b.ResetTimer()
-	for b.Loop() {
-		d := &Directory{}
-		_ = d.deserialize(br)
-	}
+func writeUvarint(buf *bytes.Buffer, val uint64) {
+	// enough space for largest possible encoding of uin64
+	var tmp [10]byte
+	n := binary.PutUvarint(tmp[:], val)
+	buf.Write(tmp[:n])
 }
 
 type mockRangeReader struct {
@@ -392,16 +247,6 @@ func errorDecompressor(r io.ReadCloser, _ Compression) (io.ReadCloser, error) {
 	return nil, errors.New("failed to decompress")
 }
 
-func fakeDirectoryData() []byte {
-	buf := &bytes.Buffer{}
-	_ = binary.Write(buf, binary.LittleEndian, uint64(1))   // 1 entry
-	_ = binary.Write(buf, binary.LittleEndian, uint64(1))   // delta
-	_ = binary.Write(buf, binary.LittleEndian, uint64(2))   // runLength
-	_ = binary.Write(buf, binary.LittleEndian, uint64(100)) // size
-	_ = binary.Write(buf, binary.LittleEndian, uint64(500)) // offset
-	return buf.Bytes()
-}
-
 func generateFakeDirectoryData(n int) []byte {
 	var buf bytes.Buffer
 
@@ -413,26 +258,105 @@ func generateFakeDirectoryData(n int) []byte {
 		}
 	}
 
-	deltas := make([]uint64, n)
+	tileids := make([]uint64, n)
 	runLens := make([]uint64, n)
-	sizes := make([]uint64, n)
+	lengths := make([]uint64, n)
 	offsets := make([]uint64, n)
 
 	var lastID uint64
 	var currentOffset uint64
 	for i := range n {
-		deltas[i] = uint64(rand.Intn(10) + 1)
+		tileids[i] = uint64(rand.Intn(10) + 1)
 		runLens[i] = uint64(rand.Intn(5) + 1)
-		sizes[i] = uint64(rand.Intn(1024) + 1)
+		lengths[i] = uint64(rand.Intn(1024) + 1)
 		offsets[i] = currentOffset
-		currentOffset += sizes[i]
-		lastID += deltas[i]
+		currentOffset += lengths[i]
+		lastID += tileids[i]
 	}
 
-	writeUvarints(deltas)
+	writeUvarints(tileids)
 	writeUvarints(runLens)
-	writeUvarints(sizes)
+	writeUvarints(lengths)
 	writeUvarints(offsets)
 
 	return buf.Bytes()
+}
+
+var (
+	sinkEntry Entry
+	sinkU64   uint64
+)
+
+func buildDirs(n uint64) *Directory {
+	d := &Directory{size: n}
+	d.entries = make(Entries, n)
+
+	var id uint64
+	for i := range n {
+		id += uint64(rand.Intn(4) + 1)
+		d.entries[i] = Entry{TileID: id, Offset: i, Length: i, RunLength: uint32(i%7) + 1}
+	}
+	return d
+}
+
+// precompute a set of random target keys spanning the whole id range
+func buildTargets(d *Directory, count int) []uint64 {
+	maxID := d.entries[len(d.entries)-1].TileID
+	t := make([]uint64, count)
+	for i := range t {
+		t[i] = rand.Uint64() % (maxID + 1)
+	}
+	return t
+}
+
+func itoa(n uint64) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
+}
+
+func BenchmarkSumLengths(b *testing.B) {
+	d := buildDirs(1 << 20)
+
+	b.Run("object", func(b *testing.B) {
+		for b.Loop() {
+			var s uint64
+			for i := range d.entries {
+				s += d.entries[i].Length // pulls 32B line, uses 8B
+			}
+			sinkU64 = s
+		}
+	})
+}
+
+func BenchmarkFindEntry(b *testing.B) {
+	sizes := []uint64{1 << 8, 1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20}
+	const targetCount = 4096
+	const mask = targetCount - 1
+
+	for _, n := range sizes {
+		d := buildDirs(n)
+		targets := buildTargets(d, targetCount)
+
+		b.Run("struct-of-objects/N="+itoa(n), func(b *testing.B) {
+			var i uint64
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				e := d.FindEntry(targets[i&mask])
+				if e != nil {
+					sinkEntry = *e
+				}
+				i++
+			}
+		})
+	}
 }

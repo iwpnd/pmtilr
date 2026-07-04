@@ -27,7 +27,14 @@ func TestFastMatchesOriginal(t *testing.T) {
 			continue
 		}
 		if origID != fastID {
-			t.Errorf("encode mismatch for (%d, %d, %d): original=%d fast=%d", z, x, y, origID, fastID)
+			t.Errorf(
+				"encode mismatch for (%d, %d, %d): original=%d fast=%d",
+				z,
+				x,
+				y,
+				origID,
+				fastID,
+			)
 		}
 
 		// Test decoding
@@ -56,5 +63,44 @@ func TestFastMatchesOriginal(t *testing.T) {
 			t.Errorf("decode mismatch for ID %d: input=%v original=%v", origID, in, origOut)
 			continue
 		}
+	}
+}
+
+var (
+	benchZ uint64 = 18
+	benchX uint64 = 51542
+	benchY uint64 = 92954
+)
+
+func BenchmarkZXYToHilbertTileID(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = ZXYToHilbertTileID(benchZ, benchX, benchY)
+	}
+}
+
+func BenchmarkFastZXYToHilbertTileID(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = FastZXYToHilbertTileID(benchZ, benchX, benchY)
+	}
+}
+
+func BenchmarkZXYFromHilbertTileID(b *testing.B) {
+	// Precompute a valid tileID for decode benchmark
+	tileID, _ := ZXYToHilbertTileID(benchZ, benchX, benchY)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = ZXYFromHilbertTileID(tileID)
+	}
+}
+
+func BenchmarkFastZXYfromHilbertTileID(b *testing.B) {
+	tileID, _ := FastZXYToHilbertTileID(benchZ, benchX, benchY)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FastZXYfromHilbertTileID(tileID)
 	}
 }
