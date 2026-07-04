@@ -1,8 +1,5 @@
 # pmtilr
 
-> [!WARNING]  
-> Work in progress. Might change at any time.
-
 A standalone golang reader for [PMTiles](https://github.com/protomaps/PMTiles) that treats a tile archive like any other service (e.g., a database or HTTP client). Plug it into your handler and request tiles via `z/x/y`.
 
 ## Features
@@ -44,6 +41,9 @@ func main() {
 
     // Get header as JSON string
     fmt.Println(src.Meta())
+
+    // Get the TileJSON
+    fmt.Println(src.TileJSON("https://myhost.com))
 
     tile, err := src.Tile(ctx, 14, 8943, 5372)
     if err != nil {
