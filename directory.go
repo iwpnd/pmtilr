@@ -76,6 +76,7 @@ func (e *Entry) ReadTileBytes(
 	return b.Bytes(), nil
 }
 
+// IsDirectory returns true if Entry is a directory indicated through runlength == 0.
 func (e *Entry) IsDirectory() bool {
 	return e.RunLength == 0
 }
@@ -252,8 +253,6 @@ type Directory struct {
 	key  string
 	size uint64
 
-	// TODO: refactor to be struct of arrays
-	// []TileID, []RunLength, []Length and []Offset
 	entries Entries
 }
 
@@ -292,7 +291,8 @@ func (d *Directory) FindEntry(tileId uint64) *Entry {
 
 	// all entries at or after i have TileIDs greater than tileId
 	// therefor candidate is the one just before that.
-	e := &d.entries[i-1]
+	c := i - 1
+	e := &d.entries[c]
 
 	// entry is a directory and should be traversed further
 	if e.RunLength == 0 {

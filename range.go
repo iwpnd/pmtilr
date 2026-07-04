@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/iwpnd/rip"
@@ -231,8 +234,28 @@ type S3Client interface {
 	) (*s3.GetObjectOutput, error)
 }
 
+func newDefaultS3HTTPClient() *awshttp.BuildableClient {
+	return awshttp.NewBuildableClient().
+		WithTransportOptions(func(tr *http.Transport) {
+			// from SDK default 100
+			tr.MaxIdleConns = 100
+			// from SDK default 10, to avoid tcp+tls handshake past 10concurrent requests
+			tr.MaxIdleConnsPerHost = 100
+			// from unset
+			tr.ResponseHeaderTimeout = 5 * time.Second
+			// from 10s
+			tr.TLSHandshakeTimeout = 3 * time.Second
+		}).
+		WithDialerOptions(func(d *net.Dialer) {
+			d.Timeout = 3 * time.Second // fail-fast connect
+		})
+}
+
 func createS3Client(ctx context.Context) (S3Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
+	cfg, err := config.LoadDefaultConfig(
+		ctx,
+		config.WithHTTPClient(newDefaultS3HTTPClient()),
+	)
 	if err != nil {
 		return nil, err
 	}
