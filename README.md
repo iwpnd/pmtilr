@@ -1,29 +1,28 @@
 # pmtilr
 
-A standalone golang reader for [PMTiles](https://github.com/protomaps/PMTiles) that treats a tile archive like any other service (e.g., a database or HTTP client). Plug it into your handler and request tiles via `z/x/y`.
+## Overview
+pmtilr is a high-performance, standalone Golang reader for [PMTiles](https://github.com/protomaps/PMTiles). It is designed to treat a tile archive like any other service (e.g., a database or HTTP client), making it easy to integrate into existing handlers.
 
-## Features
 
-* Fast Hilbert ID resolution for quick tile look‑ups
-* Default [otter/v2](https://maypok86.github.io/otter) in‑memory cache (or bring‑your‑own cache support)
-* Protocol‑agnostic range reader (`file://`, `s3://`, `http(s)://` extensible)
-* Observability: OpenTelemetry metrics and traces (todo) using the global provider by default; override with `WithMeterProvider`/`WithTracerProvider`, or disable entirely with `WithDisableInstrumentation`
-
+## Key Features
+* **High Performance**: Includes fast Hilbert ID resolution for quick tile look-ups.
+* **In-Memory Caching**: Uses [otter/v2](https://maypok86.github.io/otter) by default, with support for custom cache implementations.
+* **Protocol Agnostic**: Supports various range readers, including `file://`, `s3://`, and `http(s)://`.
+* **Observability**: Built-in support for OpenTelemetry metrics and traces.
 
 ## Installation
-
 ```bash
 go get github.com/iwpnd/pmtilr
 ```
 
-## Usage
-
+## Usage Example
 ```go
 package main
 
 import (
     "context"
     "log"
+    "fmt"
 
     "github.com/iwpnd/pmtilr"
 )
@@ -31,20 +30,17 @@ import (
 func main() {
     ctx := context.Background()
 
+    // Initialize source (e.g., from S3)
     src, err := pmtilr.NewSource(ctx, "s3://my_bucket/tiles.pmtiles")
     if err != nil {
         log.Fatalf("init source: %v", err)
     }
 
-    // Get header as JSON
+    // Access metadata and headers
     fmt.Println(src.Header())
-
-    // Get header as JSON string
     fmt.Println(src.Meta())
 
-    // Get the TileJSON
-    fmt.Println(src.TileJSON("https://myhost.com))
-
+    // Fetch a specific tile
     tile, err := src.Tile(ctx, 14, 8943, 5372)
     if err != nil {
         log.Fatalf("fetch tile: %v", err)
@@ -54,22 +50,19 @@ func main() {
 }
 ```
 
-## Benchmark
+## Observability (OpenTelemetry)
+`pmtilr` supports OpenTelemetry for both metrics and traces. By default, it uses the global OpenTelemetry provider. You can customize this behavior using the following options:
 
-Comparison against [go-pmtiles](https://github.com/protomaps/go-pmtiles) serving the same PMTiles archive from local MinIO. Both servers are pinned to 2 cores (`taskset -c 0,1`), loaded with 50 concurrent users via [k6](https://k6.io/) for 15 minutes from a fixed set of tile URLs across mixed zoom levels with a consistent ~19% 404 rate.
+- use `WithTracerProvider(provider trace.TroperProvider)` to pass a custom tracer provider for tracing.
+- use `WithMeterProvider(provider metric.MeterProvider)` to pass a custom meter provider for metrics.
+- use `WithDisableInstrumentation()` to completely disable all tracing and metrics on the `pmtilr.Source`.
 
-| Metric | go-pmtiles | pmtilr | Delta |
-| --- | --- | --- | --- |
-| Requests/s | 6,249 | 8,622 | **+38.0%** |
-| Avg latency | 7.93 ms | 5.72 ms | **-27.9%** |
-| Median latency | 1.46 ms | 1.09 ms | **-25.3%** |
-| P90 latency | 8.00 ms | 4.35 ms | **-45.6%** |
-| P95 latency | 10.35 ms | 6.27 ms | **-39.4%** |
-| Data throughput | 130 MB/s | 180 MB/s | **+38.5%** |
 
-Tested on an Intel i7-14700KF running Linux (amd64).
+### Metrics
+The following metrics are tracked:
 
-## License
-
-MIT
-
+- `pmtilr.source.tile.request.duration`: Histogram of tile request durations (includes `success` attribute).
+- `pmtilr.directory.cache.request.duration`: Histogram of cache request durations (includes `operation` attribute).
+- `pmtilr.directory.cache.hits`: Counter of cache hits (includes `cached` attribute).
+- `pmtilr.repository.directory.request.duration`: Histogram of directory lookup request durations (includes `success` attribute).
+- `pmtilr.repository.directory.request.shared`: Counter of requests shared via singleflight (includes `shared` and `success` attributes).
