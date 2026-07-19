@@ -61,6 +61,9 @@ type instrumentedSource struct {
 }
 
 func (is *instrumentedSource) Tile(ctx context.Context, z, x, y uint64) (data []byte, err error) {
+	ctx, span := is.tracer.Start(ctx, "pmtilr.tile")
+	defer span.End()
+
 	start := time.Now()
 	defer func() {
 		if is.requestHistogram.Enabled(ctx) {
@@ -141,6 +144,9 @@ func newInstrumentedCacher(
 }
 
 func (ic *instrumentedCacher) Get(ctx context.Context, key string) (Directory, bool) {
+	ctx, span := ic.tracer.Start(ctx, "pmtilr.tile.repository.cacher.get")
+	defer span.End()
+
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
@@ -171,6 +177,9 @@ func (ic *instrumentedCacher) Get(ctx context.Context, key string) (Directory, b
 }
 
 func (ic *instrumentedCacher) Set(ctx context.Context, key string, value Directory) bool {
+	ctx, span := ic.tracer.Start(ctx, "pmtilr.tile.repository.directory.cacher.set")
+	defer span.End()
+
 	start := time.Now()
 	defer func() {
 		if ic.requestHistogram.Enabled(ctx) {
@@ -257,6 +266,9 @@ func (ir *instrumentedRepository) DirectoryAt(
 	ranger Ranger,
 	decompress DecompressFunc,
 ) (dir Directory, shared bool, err error) {
+	ctx, span := ir.tracer.Start(ctx, "pmtilr.tile.repository.directory")
+	defer span.End()
+
 	start := time.Now()
 	defer func() {
 		if ir.sharedRequestHistogram.Enabled(ctx) {
