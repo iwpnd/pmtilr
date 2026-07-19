@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -78,7 +79,13 @@ func (is *instrumentedSource) Tile(ctx context.Context, z, x, y uint64) (data []
 		}
 	}()
 
-	return is.source.Tile(ctx, z, x, y)
+	data, err = is.source.Tile(ctx, z, x, y)
+	if err != nil {
+		span.SetStatus(codes.Error, "pmtilr.tile failed")
+		span.RecordError(err)
+		return data, err
+	}
+	return data, err
 }
 
 func (is *instrumentedSource) Header() HeaderV3 {
@@ -162,6 +169,7 @@ func (ic *instrumentedCacher) Get(ctx context.Context, key string) (Directory, b
 	}()
 
 	dir, cached := ic.cache.Get(ctx, key)
+	span.SetAttributes(attribute.Bool("isCached", cached))
 
 	if ic.cacheHitCounter.Enabled(ctx) {
 		ic.cacheHitCounter.Add(
@@ -296,6 +304,10 @@ func (ir *instrumentedRepository) DirectoryAt(
 				attribute.KeyValue{Key: "success", Value: attribute.BoolValue(err == nil)},
 			),
 		)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "pmtilr.directoryAt failed")
+		span.RecordError(err)
 	}
 
 	return dir, shared, err
