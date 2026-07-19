@@ -1,3 +1,14 @@
+## [1.5.0](https://github.com/iwpnd/pmtilr/compare/v1.4.0...v1.5.0) (2026-07-19)
+
+### ✨ Features
+
+* ✨ tracing instrumentation with error handling ([7f6c0f9](https://github.com/iwpnd/pmtilr/commit/7f6c0f994150066b4af4c817d72d36c915bd012a))
+
+### 🧹 Miscellaneous
+
+* 🔧 tracing instrumentation ([3a2379e](https://github.com/iwpnd/pmtilr/commit/3a2379ea9bffff2b7e707601d0879c03d59e1245))
+* **deps:** bump the aws group with 3 updates ([#103](https://github.com/iwpnd/pmtilr/issues/103)) ([84fc061](https://github.com/iwpnd/pmtilr/commit/84fc0614b54e80e4cebb1bae34b612b21d672839))
+
 ## 1.0.0 (2026-07-04)
 
 ### ✨ Features
