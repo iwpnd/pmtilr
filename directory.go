@@ -365,21 +365,23 @@ func (r *DirectoryRepository) DirectoryAt(
 		return dir, false, nil
 	}
 
+	sctx := context.WithoutCancel(ctx)
+
 	dir, err, shared := r.sg.Do(key, func() (Directory, error) {
 		// let's first see if the value is already cached in the mean time.
-		dir, ok := r.cache.Get(ctx, key)
+		dir, ok := r.cache.Get(sctx, key)
 		if ok {
 			return dir, nil
 		}
 
-		return NewDirectory(ctx, header, reader, ranger, decompress)
+		return NewDirectory(sctx, header, reader, ranger, decompress)
 	})
 	if err != nil {
 		return Directory{}, shared, fmt.Errorf("resolving directory: %w", err)
 	}
 	dir.key = key
 
-	_ = r.cache.Set(ctx, key, dir)
+	_ = r.cache.Set(sctx, key, dir)
 
 	return dir, shared, nil
 }

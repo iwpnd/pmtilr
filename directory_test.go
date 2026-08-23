@@ -10,10 +10,166 @@ import (
 	"io"
 	"math/rand"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	singleflight "github.com/iwpnd/singleflightx"
 )
+
+type blockingReader struct {
+	release chan struct{}
+	entered chan struct{}
+	payload []byte
+
+	mu         sync.Mutex
+	calls      int
+	hasEntered bool
+}
+
+func (b *blockingReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
+	b.mu.Lock()
+	b.calls++
+	if !b.hasEntered {
+		b.hasEntered = true
+		close(b.entered)
+	}
+	b.mu.Unlock()
+
+	// Two entries:
+	// Entry 0: TileID = 3, RunLength = 2, Length = 100, Offset = 500 (actual = 499)
+	// Entry 1: TileID delta = 1 (=> 4), RunLength = 1, Length = 50, Offset = 0 (should use offset = 499 + 100 = 599)
+	buf := &bytes.Buffer{}
+	writeUvarint(buf, 2) // count
+
+	// TileID deltas
+	writeUvarint(buf, 3) // delta1
+	writeUvarint(buf, 1) // delta2
+
+	// RunLengths
+	writeUvarint(buf, 2)
+	writeUvarint(buf, 1)
+
+	// Lengths
+	writeUvarint(buf, 100)
+	writeUvarint(buf, 50)
+
+	// Offsets (stored +1 in PMTiles, and 0 triggers propagation)
+	writeUvarint(buf, 500) // actual offset = 499
+	writeUvarint(buf, 0)   // triggers propagation
+
+	rc := io.NopCloser(bytes.NewReader(buf.Bytes()))
+
+	select {
+	case <-b.release:
+		return rc, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (b *blockingReader) callCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.calls
+}
+
+func TestDirectorySingleflight(t *testing.T) {
+	reader := &blockingReader{
+		release: make(chan struct{}),
+		entered: make(chan struct{}),
+		payload: []byte{0x00},
+	}
+	header := HeaderV3{InternalCompression: CompressionNone}
+
+	sg := singleflight.NewShardedGroup[string, Directory](
+		singleflight.WithShardCount(3),
+	)
+	cache, err := NewOtterCache()
+	if err != nil {
+		t.Fatal("creating cache should not error")
+	}
+
+	repository, err := NewDirectoryRepository(cache, sg)
+	if err != nil {
+		t.Fatal("creating repository should not error")
+	}
+
+	leaderCtx, cancelLeader := context.WithCancel(t.Context())
+	defer cancelLeader()
+	waiterCtx, cancelWaiter := context.WithCancel(t.Context())
+	defer cancelWaiter()
+
+	var (
+		wg                   sync.WaitGroup
+		leaderErr, waiterErr error
+		leaderDir, waiterDir Directory
+	)
+
+	// start the leader goroutine and wait until it is blocked inside the reader.
+	// hasEntered = true, upon which the select loop will close / or timeout and fail the test.
+	wg.Go(func() {
+		leaderDir, _, leaderErr = repository.DirectoryAt(
+			leaderCtx,
+			header,
+			reader,
+			NewRange(1, 1),
+			Decompress,
+		)
+	})
+
+	select {
+	case <-reader.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader never entered the reader")
+	}
+
+	// now we kick of the shared waiter. the leader already holds the singleflight
+	// flight for this key, so the waiter must join that flight rather than
+	// reading by itself
+	wg.Go(func() {
+		waiterDir, _, waiterErr = repository.DirectoryAt(
+			waiterCtx,
+			header,
+			reader,
+			NewRange(1, 1),
+			Decompress,
+		)
+	})
+
+	// give the waiter a moment to join the singleflight group before we
+	// cancel the leader.
+	time.Sleep(50 * time.Millisecond)
+
+	// now we cancel the leader. Divorcing the contexts with context.WithoutCancel around the shared read
+	// makes sure that the reader doesn't notice that the leader is gone
+	cancelLeader()
+
+	// now we release the reader so the singleflight can complete.
+	close(reader.release)
+
+	wg.Wait()
+
+	if waiterErr != nil {
+		t.Fatal("waiter must not inherit the leader's cancellation")
+	}
+
+	if waiterDir.size == 0 {
+		t.Fatal("waiter directory must not be nil from shared read")
+	}
+
+	if leaderErr != nil {
+		t.Fatal("leader shared read must complete despite cancel")
+	}
+
+	if leaderDir.size == 0 {
+		t.Fatal("waiter directory must not be nil from shared read")
+	}
+
+	if reader.callCount() != 1 {
+		t.Fatal("singleflight must serve both callers with one read")
+	}
+}
 
 func TestEntriesDeserializeNilReceiver(t *testing.T) {
 	var e Entries
