@@ -1,3 +1,9 @@
+## [1.5.1](https://github.com/iwpnd/pmtilr/compare/v1.5.0...v1.5.1) (2026-08-23)
+
+### 🐛 Bug Fixes
+
+* 🐛 divorce leader waiter ctx to avoid waiter error on leader cancel ([64697ac](https://github.com/iwpnd/pmtilr/commit/64697ac2ab16979275ffd4eb58c4d61e6353988b))
+
 ## [1.5.0](https://github.com/iwpnd/pmtilr/compare/v1.4.0...v1.5.0) (2026-07-19)
 
 ### ✨ Features
