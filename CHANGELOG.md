@@ -1,3 +1,9 @@
+## [1.5.2](https://github.com/iwpnd/pmtilr/compare/v1.5.1...v1.5.2) (2026-08-24)
+
+### 🧹 Miscellaneous
+
+* **deps:** bump the aws group with 3 updates ([#104](https://github.com/iwpnd/pmtilr/issues/104))3 ([c02723a](https://github.com/iwpnd/pmtilr/commit/c02723a2ef070bff53f849a222c45b51f6f2a395))
+
 ## [1.5.1](https://github.com/iwpnd/pmtilr/compare/v1.5.0...v1.5.1) (2026-08-23)
 
 ### 🐛 Bug Fixes
