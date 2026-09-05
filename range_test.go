@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/iwpnd/pmtilr"
-	"github.com/iwpnd/rip"
 )
 
 func TestHTTPRangeReader(t *testing.T) {
@@ -105,11 +104,7 @@ func TestHTTPRangeReader(t *testing.T) {
 			ts := tt.setupFn(t)
 			defer ts.Close()
 
-			reader, err := pmtilr.NewHTTPRangeReader(ts.URL, rip.WithTimeout(time.Millisecond*50))
-			if err != nil {
-				t.Fatalf("creating reader should not fail: %s", err)
-			}
-
+			reader := pmtilr.NewHTTPRangeReader(ts.URL).SetTimeout(time.Millisecond * 50)
 			readCloser, err := reader.ReadRange(
 				t.Context(), pmtilr.NewRange(tt.offset, tt.length),
 			)

@@ -111,7 +111,7 @@ func NewRangeReader(ctx context.Context, uri string) (RangeReader, error) {
 
 	switch u.Scheme() { //nolint:exhaustive
 	case SchemeHTTP, SchemeHTTPS:
-		return NewHTTPRangeReader(u.Raw().String())
+		return NewHTTPRangeReader(u.Raw().String()), nil
 	case SchemeFileCwd, SchemeFile:
 		return NewFileRangeReader(u.FullPath())
 	case SchemeS3:
@@ -137,21 +137,16 @@ type HTTPRangeReader struct {
 // NewHTTPRangeReader returns an HTTPRangeReader configured for the given host.
 // A default timeout of 200ms is applied; callers may override it or supply
 // additional rip.Options which take precedence over defaults.
-func NewHTTPRangeReader(host string, options ...rip.Option) (*HTTPRangeReader, error) {
-	defaultOpts := []rip.Option{
-		rip.WithTimeout(time.Second * 5),
-	}
-	c, err := rip.NewClient(
-		strings.TrimSuffix(host, "/"),
-		append(defaultOpts, options...)...,
-	)
-	if err != nil {
-		return nil, err
-	}
-
+func NewHTTPRangeReader(host string) *HTTPRangeReader {
+	c := rip.NewClient().SetTimeout(time.Second * 5).SetBaseURL(strings.TrimSuffix(host, "/"))
 	return &HTTPRangeReader{
 		c: c,
-	}, nil
+	}
+}
+
+func (h *HTTPRangeReader) SetTimeout(timeout time.Duration) *HTTPRangeReader {
+	h.c.SetTimeout(timeout)
+	return h
 }
 
 // ReadRange fetches a byte range from the upstream host.
@@ -161,7 +156,7 @@ func NewHTTPRangeReader(host string, options ...rip.Option) (*HTTPRangeReader, e
 // non-success status code (> 399).
 func (h *HTTPRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.ReadCloser, error) {
 	req := h.c.NR().SetHeader("Range", bytesRange(ranger.Offset(), ranger.Length()))
-	res, err := req.Execute(ctx, "GET", "")
+	res, err := req.Get(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +164,7 @@ func (h *HTTPRangeReader) ReadRange(ctx context.Context, ranger Ranger) (io.Read
 		return nil, fmt.Errorf("%w: %d", ErrUpstreamStatus, res.StatusCode())
 	}
 
-	return res.RawBody(), nil
+	return res.Body()
 }
 
 // FileRangeReader implements RangeReader by reading from an io.ReaderAt (file).
