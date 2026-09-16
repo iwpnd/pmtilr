@@ -1,3 +1,11 @@
+## [1.5.3](https://github.com/iwpnd/pmtilr/compare/v1.5.2...v1.5.3) (2026-09-16)
+
+### 🧹 Miscellaneous
+
+* 🔧 use v1 rip client ([f8c26fe](https://github.com/iwpnd/pmtilr/commit/f8c26fe486022542f5299ab98e5c6470baa1bb9b))
+* **deps:** bump the aws group across 1 directory with 3 updates ([#106](https://github.com/iwpnd/pmtilr/issues/106)) ([1d20e1b](https://github.com/iwpnd/pmtilr/commit/1d20e1be22bfc1fe294a8a9583a42bd9c1e76d43))
+* **deps:** bump the otel group with 3 updates ([#110](https://github.com/iwpnd/pmtilr/issues/110)) ([1855eec](https://github.com/iwpnd/pmtilr/commit/1855eecee97c5cf3dd548a6384d14028ad3b1e05))
+
 ## [1.5.2](https://github.com/iwpnd/pmtilr/compare/v1.5.1...v1.5.2) (2026-08-24)
 
 ### 🧹 Miscellaneous
