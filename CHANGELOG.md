@@ -1,3 +1,9 @@
+## [1.5.4](https://github.com/iwpnd/pmtilr/compare/v1.5.3...v1.5.4) (2026-09-16)
+
+### 🧹 Miscellaneous
+
+* **deps:** bump github.com/iwpnd/rip from 1.0.0-rc.3 to 1.0.0-rc.4 ([#111](https://github.com/iwpnd/pmtilr/issues/111)) ([66ebe01](https://github.com/iwpnd/pmtilr/commit/66ebe0106f93039473ca1182cb20cdcf2ab2186d))
+
 ## [1.5.3](https://github.com/iwpnd/pmtilr/compare/v1.5.2...v1.5.3) (2026-09-16)
 
 ### 🧹 Miscellaneous
