@@ -1,3 +1,9 @@
+## [1.5.5](https://github.com/iwpnd/pmtilr/compare/v1.5.4...v1.5.5) (2026-10-05)
+
+### 🐛 Bug Fixes
+
+* 🐛 bump rip ([ffd8e05](https://github.com/iwpnd/pmtilr/commit/ffd8e05d88a3d168a55a7a458b6a3539b61667c1))
+
 ## [1.5.4](https://github.com/iwpnd/pmtilr/compare/v1.5.3...v1.5.4) (2026-09-16)
 
 ### 🧹 Miscellaneous
