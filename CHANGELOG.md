@@ -1,3 +1,10 @@
+## [1.5.6](https://github.com/iwpnd/pmtilr/compare/v1.5.5...v1.5.6) (2026-10-08)
+
+### 🧹 Miscellaneous
+
+* 🔧 bump rip ([d02d4d4](https://github.com/iwpnd/pmtilr/commit/d02d4d474fa4d4755c0fb35a96c6e99dedb86cad))
+* **deps:** bump the aws group across 1 directory with 3 updates ([#112](https://github.com/iwpnd/pmtilr/issues/112)) ([2d8e1e5](https://github.com/iwpnd/pmtilr/commit/2d8e1e5e73dcb8e32418536143bd6fbce30d352c))
+
 ## [1.5.5](https://github.com/iwpnd/pmtilr/compare/v1.5.4...v1.5.5) (2026-10-05)
 
 ### 🐛 Bug Fixes
